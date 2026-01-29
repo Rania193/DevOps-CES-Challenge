@@ -1,0 +1,11 @@
+extraArgs:
+  provider: github
+  redirect-url: "http://ab5fcf53b5eb345c99124a586aebf855-a20891d2923cee7e.elb.eu-west-1.amazonaws.com/oauth2/callback"  # Update this
+  cookie-secure: "false"
+
+ingress:
+  enabled: true
+  className: nginx
+  path: /oauth2
+  hosts:
+    - ""
