@@ -1,0 +1,93 @@
+# ArgoCD Applications with helm-secrets integration
+#
+# Prerequisites:
+#   1. Create secret with age key:
+#      kubectl -n argocd create secret generic helm-secrets-private-keys \
+#        --from-file=key.txt=$HOME/.config/sops/age/keys.txt
+#
+#   2. Update argocd-cm ConfigMap:
+#      kubectl patch configmap argocd-cm -n argocd --type merge -p '{"data":{"helm.valuesFileSchemes":"secrets+age-import,secrets+age-import-kubernetes,secrets,https"}}'
+#
+#   3. Mount key in argocd-repo-server (see README)
+#
+#   4. Replace YOUR_USERNAME with your GitHub username
+
+---
+# Webapp
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: webapp
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Rania193E/DevOps-CES-Challenge.git
+    path: helm-charts/webapp
+    targetRevision: main
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: webapp
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+
+---
+# Ingress NGINX (external chart with values from Git)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ingress-nginx
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://kubernetes.github.io/ingress-nginx
+    chart: ingress-nginx
+    targetRevision: 4.8.3
+    helm:
+      releaseName: ingress-nginx
+      valueFiles:
+        - https://raw.githubusercontent.com/Rania193/DevOps-CES-Challenge/main/helm-values/ingress-nginx.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ingress-nginx
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+
+---
+# OAuth2 Proxy (external chart with encrypted secrets from Git)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: oauth2-proxy
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://oauth2-proxy.github.io/manifests
+    chart: oauth2-proxy
+    targetRevision: 6.19.1
+    helm:
+      releaseName: oauth2-proxy
+      valueFiles:
+        # Regular values
+        - https://raw.githubusercontent.com/Rania193/DevOps-CES-Challenge/main/helm-values/oauth2-proxy.yaml
+        # Encrypted secrets - helm-secrets decrypts using mounted age key
+        - secrets+age-import:///helm-secrets-private-keys/key.txt?https://raw.githubusercontent.com/Rania193/DevOps-CES-Challenge/main/secrets/secrets.enc.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: oauth2-proxy
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
