@@ -21,11 +21,11 @@ terraform {
   }
 
   backend "s3" {
-    bucket         = "rania-terraform-state-bucket"
-    key            = "DevOps-CES-Challenge/terraform.tfstate"
+    bucket         = "ces-challenge-terraform-state"
+    key            = "ces-challenge/terraform.tfstate"
     region         = "eu-west-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks"
+    dynamodb_table = "ces-challenge-terraform-lock"
   }
 }
 

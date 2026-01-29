@@ -1,6 +1,6 @@
 project_name = "datavisyn"
 environment  = "dev"
-aws_region = "eu-west=1"
+aws_region = "eu-west-1"
 vpc_cidr = "10.0.0.0/16"
 cluster_version = "1.28"
 node_instance_types = ["t3.medium"]

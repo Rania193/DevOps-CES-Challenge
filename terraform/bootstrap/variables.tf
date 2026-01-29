@@ -10,5 +10,5 @@ variable "environment" {
 
 variable "project_name" {
   type = string
-  default = "CES-Challenge"
+  default = "ces-challenge"
 }
