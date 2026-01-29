@@ -22,7 +22,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/Rania193E/DevOps-CES-Challenge.git
+    repoURL: https://github.com/Rania193/DevOps-CES-Challenge.git
     path: helm-charts/webapp
     targetRevision: main
   destination:
