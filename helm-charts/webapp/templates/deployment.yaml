@@ -2,8 +2,6 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  annotations:
-    gitops-refresh: "2026-01-29T22:40:00Z"
   name: {{ .Release.Name }}-webapp
   labels:
     app: {{ .Release.Name }}-webapp
@@ -14,6 +12,8 @@ spec:
       app: {{ .Release.Name }}-webapp
   template:
     metadata:
+      annotations:
+        gitops-rollout: "929d692"
       labels:
         app: {{ .Release.Name }}-webapp
     spec:
