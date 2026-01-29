@@ -1,0 +1,30 @@
+apiVersion: v2
+name: webapp
+description: A Helm chart for deploying a web application with OAuth2 authentication
+type: application
+
+# Chart version
+version: 1.0.0
+
+# Application version
+appVersion: "1.0.0"
+
+# Minimum Kubernetes version required
+kubeVersion: ">= 1.25.0-0"
+
+# Maintainer info
+maintainers:
+  - name: Rania Fahmy
+    email: rania.fahmy222@gmail.com
+
+# Keywords for searchability
+keywords:
+  - webapp
+  - oauth2
+  - fastapi
+
+# Home URL and sources
+home: https://github.com/Rania193/DevOps-CES-Challenge
+sources:
+  - https://github.com/Rania193/DevOps-CES-Challenge
+

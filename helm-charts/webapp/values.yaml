@@ -1,0 +1,32 @@
+frontend:
+  enabled: true
+  
+  image:
+    repository: tiangolo/uvicorn-gunicorn-fastapi
+    tag: "python3.11-slim"
+    pullPolicy: IfNotPresent
+  
+  replicas: 2
+  containerPort: 80
+  
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "500m"
+  
+  service:
+    type: ClusterIP
+    port: 80
+
+ingress:
+  enabled: true
+  className: nginx
+  
+  annotations:
+    # OAuth2 authentication
+    nginx.ingress.kubernetes.io/auth-url: "http://oauth2-proxy.oauth2-proxy.svc.cluster.local:80/oauth2/auth"
+    nginx.ingress.kubernetes.io/auth-signin: "http://$host/oauth2/start?rd=$escaped_request_uri"
+    nginx.ingress.kubernetes.io/auth-response-headers: "X-Auth-Request-User,X-Auth-Request-Email"

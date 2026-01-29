@@ -1,0 +1,12 @@
+# Service - stable network endpoint for pods
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-webapp
+spec:
+  type: {{ .Values.frontend.service.type }}
+  ports:
+    - port: {{ .Values.frontend.service.port }}
+      targetPort: 80
+  selector:
+    app: {{ .Release.Name }}-webapp
