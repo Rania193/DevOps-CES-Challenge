@@ -4,7 +4,23 @@ controller:
     annotations:
       service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
       service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
-      # Static Elastic IP (never changes!)
+      
+      # =================================================================
+      # DEMO CONFIG: Single AZ with one Elastic IP (~$3.65/month)
+      # - Static IP that never changes
+      # - If the AZ goes down, app is unreachable
+      # =================================================================
       service.beta.kubernetes.io/aws-load-balancer-eip-allocations: "eipalloc-07b3b138394de6d6c"
-      # Single subnet for cost savings
       service.beta.kubernetes.io/aws-load-balancer-subnets: "subnet-026655445a2b945c2"
+      
+      # =================================================================
+      # PRODUCTION CONFIG: Multi-AZ with EIPs per AZ (~$11/month for 3 AZs)
+      # Uncomment below and remove single-subnet config above:
+      # 
+      # service.beta.kubernetes.io/aws-load-balancer-eip-allocations: "eipalloc-az1,eipalloc-az2,eipalloc-az3"
+      # 
+      # Or use Route 53 with dynamic NLB (no EIPs needed):
+      # - Remove eip-allocations and subnets annotations
+      # - Create Route 53 ALIAS record pointing to NLB hostname
+      # - AWS handles IP changes automatically
+      # =================================================================
