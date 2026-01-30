@@ -39,18 +39,22 @@ metadata:
 data:
   # Policy format: p, <subject>, <resource>, <action>, <project>, allow/deny
   # Role format: g, <user>, <role>
+  #
+  # IMPORTANT: The username is your GitHub EMAIL, not your GitHub username!
+  # Check ArgoCD UI > User Info to see your actual username.
   policy.csv: |
-    # Grant admin access to specific GitHub users
-    # Replace 'Rania193' with your GitHub username
-    g, Rania193, role:admin
+    # Grant admin access to specific GitHub users (by email!)
+    # Replace with your GitHub email (check User Info in ArgoCD)
+    g, rania.fahmy222@gmail.com, role:admin
     
     # You can add more users:
-    # g, another-github-user, role:admin
-    # g, readonly-user, role:readonly
+    # g, another-user@gmail.com, role:admin
+    # g, readonly-user@gmail.com, role:readonly
   
   # Default policy for users not explicitly listed
   # Options: role:readonly, role:admin, or "" (no access)
-  policy.default: role:readonly
+  # Set to role:admin for demo/testing
+  policy.default: role:admin
   
   # Map GitHub username to ArgoCD user
   scopes: "[groups, email]"
