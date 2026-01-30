@@ -354,6 +354,92 @@ kubectl -n argocd create secret generic helm-secrets-private-keys \
 
 ---
 
+## Cleanup / Teardown
+
+**Important:** You cannot run `terraform destroy` directly. The Network Load Balancer is created by Kubernetes (not Terraform), and it holds a reference to the Elastic IP. Terraform will fail trying to delete the EIP while it's still in use.
+
+Follow this order:
+
+### 1. Delete Kubernetes Services (releases the Load Balancer)
+
+```bash
+# Delete the ingress-nginx service that created the NLB
+kubectl delete svc ingress-nginx-controller -n ingress-nginx
+
+# Or delete the entire namespace
+kubectl delete namespace ingress-nginx
+```
+
+### 2. Wait for the NLB to be Deleted
+
+The AWS cloud controller will delete the NLB when the service is removed. This can take 1-2 minutes.
+
+```bash
+# Verify no load balancers remain
+aws elbv2 describe-load-balancers --query 'LoadBalancers[*].[LoadBalancerName,State.Code]' --output table
+```
+
+Wait until your NLB no longer appears in the list, or shows as "deleted".
+
+### 3. Delete Remaining Kubernetes Resources
+
+```bash
+# Delete ArgoCD applications
+kubectl delete -f argocd/apps/
+
+# Delete namespaces
+kubectl delete namespace argocd cert-manager oauth2-proxy webapp
+```
+
+### 4. Destroy Terraform Infrastructure
+
+```bash
+cd terraform
+terraform destroy
+```
+
+### 5. Clean Up Terraform State Backend (Optional)
+
+If you also want to remove the S3 bucket used for Terraform state:
+
+```bash
+cd terraform/bootstrap
+
+# Empty the bucket first (required before deletion)
+aws s3 rm s3://datavisyn-terraform-state-$(aws sts get-caller-identity --query Account --output text) --recursive
+
+terraform destroy
+```
+
+### Quick Cleanup Script
+
+For convenience, here's the full cleanup in one go:
+
+```bash
+#!/bin/bash
+set -e
+
+echo "Deleting ingress-nginx service..."
+kubectl delete svc ingress-nginx-controller -n ingress-nginx --ignore-not-found
+
+echo "Waiting for NLB to be released (60 seconds)..."
+sleep 60
+
+echo "Deleting namespaces..."
+kubectl delete namespace ingress-nginx argocd cert-manager oauth2-proxy webapp --ignore-not-found
+
+echo "Waiting for namespace cleanup (30 seconds)..."
+sleep 30
+
+echo "Running terraform destroy..."
+cd terraform
+terraform destroy -auto-approve
+
+echo "Cleanup complete!"
+```
+
+---
+
 ## Notes
 
 - All secrets are encrypted with SOPS and should never be committed in plaintext
