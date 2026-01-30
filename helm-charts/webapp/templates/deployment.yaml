@@ -13,7 +13,7 @@ spec:
   template:
     metadata:
       annotations:
-        gitops-rollout: "929d692"
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum | trunc 8 }}
       labels:
         app: {{ .Release.Name }}-webapp
     spec:
@@ -24,3 +24,11 @@ spec:
             - containerPort: 80
           resources:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
+          volumeMounts:
+            - name: app-code
+              mountPath: /app/main.py
+              subPath: main.py
+      volumes:
+        - name: app-code
+          configMap:
+            name: {{ .Release.Name }}-webapp-code
