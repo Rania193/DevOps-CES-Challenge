@@ -217,7 +217,7 @@ Go to [DuckDNS](https://www.duckdns.org) and create two domains pointing to your
 | `datavisyn-demo.duckdns.org` | Main webapp |
 | `datavisyn-argocd.duckdns.org` | ArgoCD dashboard |
 
-![DuckDNS Configuration](docs/duckdns.png)
+![DuckDNS Configuration](docs/screenshots/duckdns.png)
 
 ### 7. Create GitHub OAuth Apps
 
