@@ -95,7 +95,7 @@ terraform output nlb_subnet_id
 
 ### Update ingress-nginx.yaml
 
-Edit `helm-values/ingress-nginx.yaml` and replace the placeholders with your actual values:
+Edit `helm/values/ingress-nginx.yaml` and replace the placeholders with your actual values:
 
 ```yaml
 service.beta.kubernetes.io/aws-load-balancer-eip-allocations: "eipalloc-xxx"
@@ -104,7 +104,7 @@ service.beta.kubernetes.io/aws-load-balancer-subnets: "subnet-xxx"
 
 Commit and push:
 ```bash
-git add helm-values/ingress-nginx.yaml
+git add helm/values/ingress-nginx.yaml
 git commit -m "Configure static EIP for NLB"
 git push
 ```
@@ -178,7 +178,7 @@ kubectl -n argocd patch secret argocd-secret --type='json' -p="[
 ### Apply Configuration
 
 ```bash
-kubectl apply -f argocd/argocd-github-oauth.yaml
+kubectl apply -f argocd/config/argocd-github-oauth.yaml
 ```
 
 ### Fix RBAC Permissions
@@ -238,7 +238,7 @@ kubectl -n argocd create secret generic helm-secrets-private-keys \
 kubectl patch configmap argocd-cm -n argocd --type merge -p '{"data":{"helm.valuesFileSchemes":"secrets+age-import,secrets+age-import-kubernetes,secrets,https"}}'
 
 # Apply the repo-server patch for helm-secrets
-kubectl patch deployment argocd-repo-server -n argocd --patch-file argocd/argocd-repo-server-patch.yaml
+kubectl patch deployment argocd-repo-server -n argocd --patch-file argocd/config/argocd-repo-server-patch.yaml
 
 # Wait for repo-server to restart
 kubectl rollout status deployment/argocd-repo-server -n argocd
@@ -250,7 +250,7 @@ kubectl rollout status deployment/argocd-repo-server -n argocd
 
 ```bash
 # Apply all ArgoCD applications
-kubectl apply -f argocd/applications.yaml
+kubectl apply -f argocd/apps/
 ```
 
 This deploys (in order via sync-waves):
@@ -495,8 +495,74 @@ If you didn't configure the Elastic IP, the NLB IP will change. Fix by:
 
 1. Get your EIP allocation ID: `terraform output nlb_eip_allocation_id`
 2. Get your subnet ID: `terraform output nlb_subnet_id`
-3. Update `helm-values/ingress-nginx.yaml` with these values
+3. Update `helm/values/ingress-nginx.yaml` with these values
 4. Commit, push, and sync ingress-nginx in ArgoCD
+
+---
+
+## Demo vs Production: Load Balancer Configuration
+
+This project uses a **cost-optimized demo setup**. Here's how it differs from production:
+
+### Demo Setup (This Project)
+| Aspect | Configuration | Cost |
+|--------|--------------|------|
+| Elastic IPs | 1 EIP in single AZ | ~$3.65/month |
+| Availability | Single AZ - if AZ fails, app is down | - |
+| DNS | DuckDNS (free dynamic DNS) | Free |
+| Total | Good for demos & interviews | ~$4/month |
+
+### Production Setup
+| Aspect | Configuration | Cost |
+|--------|--------------|------|
+| Elastic IPs | 1 EIP per AZ (3 AZs) | ~$11/month |
+| Availability | Multi-AZ - survives AZ failures | - |
+| DNS | Route 53 with ALIAS record | ~$0.50/month |
+| Total | High availability | ~$12/month |
+
+### Production Changes
+
+**Option A: Multi-AZ with Elastic IPs**
+
+```yaml
+# helm/values/ingress-nginx.yaml
+service.beta.kubernetes.io/aws-load-balancer-eip-allocations: "eipalloc-az1,eipalloc-az2,eipalloc-az3"
+# Remove the subnets annotation to use all AZs
+```
+
+Update Terraform to create 3 EIPs:
+```hcl
+# terraform/modules/vpc/main.tf
+resource "aws_eip" "nlb" {
+  count  = length(var.availability_zones)  # 3 EIPs
+  ...
+}
+```
+
+**Option B: Route 53 (Recommended for Production)**
+
+No Elastic IPs needed! AWS handles IP changes automatically.
+
+```yaml
+# helm/values/ingress-nginx.yaml - Remove EIP annotations entirely
+controller:
+  service:
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+      service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+      # No eip-allocations or subnets - NLB uses all AZs automatically
+```
+
+Then in Route 53:
+1. Create a hosted zone for your domain
+2. Create an ALIAS record pointing to the NLB hostname
+3. AWS automatically resolves to healthy NLB IPs
+
+**Why Route 53 ALIAS is better:**
+- No Elastic IP costs
+- Automatic failover between AZs
+- Health checks built-in
+- Works with dynamic NLB IPs
 
 ---
 
@@ -517,7 +583,7 @@ To destroy everything:
 
 ```bash
 # Delete ArgoCD apps first
-kubectl delete -f argocd/applications.yaml
+kubectl delete -f argocd/apps/
 
 # Destroy infrastructure
 cd terraform

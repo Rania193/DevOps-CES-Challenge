@@ -1,0 +1,24 @@
+# Webapp - main application with GitHub OAuth protection
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: webapp
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Rania193/DevOps-CES-Challenge.git
+    path: helm/charts/webapp
+    targetRevision: main
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: webapp
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+

@@ -1,0 +1,31 @@
+# OAuth2 Proxy - GitHub authentication for webapp
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: oauth2-proxy
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: default
+  source:
+    repoURL: https://oauth2-proxy.github.io/manifests
+    chart: oauth2-proxy
+    targetRevision: 6.19.1
+    helm:
+      releaseName: oauth2-proxy
+      valueFiles:
+        # Regular values
+        - https://raw.githubusercontent.com/Rania193/DevOps-CES-Challenge/main/helm/values/oauth2-proxy.yaml
+        # Encrypted secrets - helm-secrets decrypts using mounted age key
+        - secrets+age-import:///helm-secrets-private-keys/key.txt?https://raw.githubusercontent.com/Rania193/DevOps-CES-Challenge/main/secrets/secrets.enc.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: oauth2-proxy
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+
