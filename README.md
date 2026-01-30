@@ -105,7 +105,6 @@ Manages application deployments using GitOps principles. When changes are pushed
 
 ![ArgoCD Dashboard](docs/screenshots/argocd-dashboard.png)
 
-![ArgoCD Applications](docs/screenshots/argocd-apps.png)
 
 ### 5. cert-manager
 
@@ -217,6 +216,8 @@ Go to [DuckDNS](https://www.duckdns.org) and create two domains pointing to your
 |--------|---------|
 | `datavisyn-demo.duckdns.org` | Main webapp |
 | `datavisyn-argocd.duckdns.org` | ArgoCD dashboard |
+
+![DuckDNS Configuration](docs/duckdns.png)
 
 ### 7. Create GitHub OAuth Apps
 
