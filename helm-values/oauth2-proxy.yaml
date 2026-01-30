@@ -9,11 +9,11 @@ ingress:
   enabled: true
   className: nginx
   path: /oauth2
-  # Leave empty to accept all hosts, or specify your domain
+  pathType: Prefix
   hosts:
-    - ""
+    - datavisyn-demo.duckdns.org
   
   tls:
-    - secretName: oauth2-proxy-tls
+    - secretName: webapp-tls
       hosts:
         - datavisyn-demo.duckdns.org
