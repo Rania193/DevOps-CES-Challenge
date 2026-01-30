@@ -1,210 +1,252 @@
-# Datavisyn DevOps CES Challenge
+# Datavisyn DevOps Challenge
 
-A production-ready Kubernetes deployment on **AWS EKS** featuring OAuth2 authentication, encrypted secrets management, TLS certificates, and GitOps continuous deployment.
+A Kubernetes deployment on AWS EKS with GitHub OAuth authentication, encrypted secrets management, and GitOps continuous deployment.
+
+---
+
+## Architecture Overview
+
+The platform is deployed on AWS using an EKS (Elastic Kubernetes Service) cluster. The architecture leverages several key components for security, automation, and scalability. Below is a high-level overview:
 
 ![Architecture Diagram](docs/architecture.png)
-<!-- TODO: Add architecture diagram -->
+
+### Key Components
+
+- **AWS EKS Cluster**: Hosts all Kubernetes workloads.  
+  [AWS EKS Documentation](https://docs.aws.amazon.com/eks/)
+
+- **Elastic IP + Network Load Balancer**: Provides a static IP address for consistent DNS configuration. Traffic is forwarded to the Ingress Controller.  
+  [AWS Elastic IP](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/elastic-ip-addresses-eip.html)
+
+- **Ingress Controller (NGINX)**: Handles routing, TLS termination, and forwards requests to internal services.  
+  [NGINX Ingress Controller](https://kubernetes.github.io/ingress-nginx/)
+
+- **OAuth2 Proxy**: Secures access to the webapp by authenticating users via GitHub OAuth.  
+  [OAuth2 Proxy](https://oauth2-proxy.github.io/oauth2-proxy/)
+
+- **Webapp (FastAPI)**: A Python-based web application demonstrating the deployment.  
+  [FastAPI](https://fastapi.tiangolo.com/)
+
+- **ArgoCD**: GitOps tool for continuous deployment. Monitors the GitHub repository and automatically syncs changes to the cluster.  
+  [ArgoCD](https://argo-cd.readthedocs.io/)
+
+- **cert-manager**: Automatically provisions and renews TLS certificates from Let's Encrypt.  
+  [cert-manager](https://cert-manager.io/)
+
+- **helm-secrets + SOPS**: Encrypts sensitive values (OAuth credentials, API keys) so they can be safely stored in Git.  
+  [helm-secrets](https://github.com/jkroepke/helm-secrets)
+
+- **DuckDNS**: Free dynamic DNS service for custom domain names.  
+  [DuckDNS](https://www.duckdns.org/)
 
 ---
 
-## 🎯 Challenge Overview
-
-This project demonstrates a complete DevOps workflow deploying a web application with:
-
-- **Infrastructure as Code** - AWS resources provisioned via Terraform
-- **Kubernetes Orchestration** - AWS EKS with auto-scaling node groups
-- **GitOps Deployment** - ArgoCD for automated, Git-driven deployments
-- **OAuth2 Authentication** - GitHub SSO protecting both the webapp and ArgoCD
-- **Secrets Management** - SOPS + age encryption with helm-secrets
-- **TLS Certificates** - Automated Let's Encrypt certificates via cert-manager
-- **Static IP** - Elastic IP for consistent DNS configuration
-
----
-
-## 🏗️ Architecture
+## Project Structure
 
 ```
-                                    ┌─────────────────────────────────────────────────────────────┐
-                                    │                        AWS Cloud                            │
-                                    │                                                             │
-┌──────────┐                        │  ┌─────────────────────────────────────────────────────┐   │
-│  User    │                        │  │                    AWS EKS Cluster                   │   │
-│ Browser  │                        │  │                                                      │   │
-└────┬─────┘                        │  │   ┌─────────────┐      ┌─────────────────────────┐  │   │
-     │                              │  │   │   ArgoCD    │◄────►│    GitHub Repository    │  │   │
-     │ HTTPS                        │  │   │   (GitOps)  │      │    (Source of Truth)    │  │   │
-     ▼                              │  │   └─────────────┘      └─────────────────────────┘  │   │
-┌─────────────┐    ┌────────────┐   │  │                                                      │   │
-│  DuckDNS    │───►│  Elastic   │   │  │   ┌─────────────┐    ┌──────────────┐    ┌───────┐  │   │
-│ (DNS)       │    │    IP      │───┼──┼──►│   NGINX     │───►│ OAuth2-Proxy │───►│Webapp │  │   │
-└─────────────┘    └────────────┘   │  │   │  Ingress    │    │  (GitHub)    │    │(Fast  │  │   │
-                                    │  │   │ Controller  │    └──────────────┘    │ API)  │  │   │
-                                    │  │   └──────┬──────┘                        └───────┘  │   │
-                                    │  │          │                                          │   │
-                                    │  │   ┌──────▼──────┐                                   │   │
-                                    │  │   │cert-manager │                                   │   │
-                                    │  │   │(TLS certs)  │                                   │   │
-                                    │  │   └─────────────┘                                   │   │
-                                    │  └──────────────────────────────────────────────────────┘   │
-                                    │                                                             │
-                                    │  ┌─────────────────────────────────────────────────────┐   │
-                                    │  │  VPC: 10.0.0.0/16 │ 3 AZs │ Public + Private Subnets│   │
-                                    │  └─────────────────────────────────────────────────────┘   │
-                                    └─────────────────────────────────────────────────────────────┘
-```
+argocd/
+  apps/                  # ArgoCD Application manifests (one per component)
+  config/                # ArgoCD server configuration (OAuth, Ingress)
 
-### Component Overview
+helm/
+  charts/
+    webapp/              # Custom Helm chart for the webapp
+  values/                # Value overrides for external charts
 
-| Component | Purpose | Technology |
-|-----------|---------|------------|
-| **Infrastructure** | Cloud resources | Terraform + AWS (VPC, EKS, IAM) |
-| **Ingress** | Traffic routing & TLS | NGINX Ingress Controller |
-| **Authentication** | GitHub OAuth2 SSO | oauth2-proxy |
-| **Certificates** | Automated TLS | cert-manager + Let's Encrypt |
-| **Secrets** | Encrypted secrets in Git | SOPS + age + helm-secrets |
-| **GitOps** | Automated deployments | ArgoCD |
-| **Application** | Demo webapp | FastAPI (Python) |
+secrets/
+  secrets.enc.yaml       # Encrypted secrets (safe to commit)
+  secrets.yaml.example   # Template showing required structure
 
----
+terraform/
+  bootstrap/             # S3 backend for Terraform state
+  modules/
+    eks/                 # EKS cluster configuration
+    iam/                 # IAM roles and policies
+    vpc/                 # VPC, subnets, NAT gateway
 
-## 📁 Project Structure
-
-```
-├── argocd/
-│   ├── apps/                      # ArgoCD Application manifests
-│   │   ├── cert-manager.yaml      # TLS certificate management
-│   │   ├── ingress-nginx.yaml     # Load balancer & routing
-│   │   ├── oauth2-proxy.yaml      # GitHub authentication
-│   │   └── webapp.yaml            # Main application
-│   └── config/                    # ArgoCD configuration
-│       ├── argocd-github-oauth.yaml
-│       ├── argocd-ingress.yaml    # External access with TLS
-│       └── argocd-cmd-params-cm.yaml
-├── helm/
-│   ├── charts/
-│   │   └── webapp/                # Custom Helm chart
-│   │       ├── Chart.yaml
-│   │       ├── templates/
-│   │       └── values.yaml
-│   └── values/                    # External chart overrides
-│       ├── cert-manager.yaml
-│       ├── ingress-nginx.yaml
-│       └── oauth2-proxy.yaml
-├── secrets/
-│   ├── secrets.enc.yaml           # Encrypted secrets (safe to commit)
-│   └── secrets.yaml.example       # Template for secrets
-├── terraform/
-│   ├── bootstrap/                 # S3 backend for state
-│   └── modules/
-│       ├── eks/                   # EKS cluster
-│       ├── iam/                   # IAM roles & policies
-│       └── vpc/                   # Network infrastructure
-├── docs/                          # Documentation & diagrams
-└── README.md
+docs/
+  screenshots/           # Application screenshots
 ```
 
 ---
 
-## 🔧 Prerequisites
+## Component Details
 
-### Required Tools
+### 1. Webapp (FastAPI)
+
+A simple Python FastAPI application that returns a JSON response. The application code is injected via a Kubernetes ConfigMap, allowing updates without rebuilding the container image.
+
+**Screenshots:**
+
+![Webapp](docs/screenshots/webapp.png)
+
+### 2. OAuth2 Proxy
+
+Protects the webapp by requiring GitHub authentication before access is granted. Users who are not logged in are redirected to GitHub's OAuth flow.
+
+- Integrates with GitHub OAuth for authentication
+- Sets a secure cookie after successful login
+- Only authenticated users can access the webapp
+
+### 3. Ingress Controller (NGINX)
+
+Handles all incoming HTTP/HTTPS traffic and routes requests to the appropriate backend services based on hostname.
+
+- `datavisyn-demo.duckdns.org` → Webapp (via OAuth2 Proxy)
+- `datavisyn-argocd.duckdns.org` → ArgoCD dashboard
+
+TLS certificates are automatically provisioned by cert-manager.
+
+### 4. ArgoCD
+
+Manages application deployments using GitOps principles. When changes are pushed to the GitHub repository, ArgoCD detects them and automatically syncs the cluster state.
+
+**Screenshots:**
+
+![ArgoCD Dashboard](docs/screenshots/argocd-dashboard.png)
+
+![ArgoCD Applications](docs/screenshots/argocd-apps.png)
+
+### 5. cert-manager
+
+Automatically requests and renews TLS certificates from Let's Encrypt using the HTTP-01 challenge. Certificates are stored as Kubernetes secrets and mounted by the Ingress Controller.
+
+### 6. Secrets Management (SOPS + age)
+
+Secrets are encrypted locally using SOPS with age encryption before being committed to Git. ArgoCD uses the helm-secrets plugin to decrypt these values at deployment time.
+
+This approach allows:
+- Secrets to be version-controlled alongside infrastructure code
+- No plaintext secrets ever stored in Git
+- Easy secret rotation via standard Git workflows
+
+---
+
+## Authentication Flow
+
+1. **User Access**
+   - User navigates to `https://datavisyn-demo.duckdns.org`
+   - The Load Balancer forwards traffic to the NGINX Ingress Controller
+
+2. **Authentication Check**
+   - The Ingress Controller checks authentication status via OAuth2 Proxy
+   - If not authenticated, the user is redirected to GitHub OAuth
+
+3. **GitHub OAuth**
+   - User logs in with their GitHub credentials
+   - GitHub redirects back to `/oauth2/callback` with an authorization code
+   - OAuth2 Proxy exchanges the code for a token and sets a session cookie
+
+4. **Access Granted**
+   - Subsequent requests include the session cookie
+   - OAuth2 Proxy validates the cookie and forwards the request to the webapp
+
+5. **Continuous Deployment**
+   - ArgoCD monitors the GitHub repository for changes
+   - When changes are detected, ArgoCD syncs the cluster state automatically
+
+---
+
+## Setup Instructions
+
+### Prerequisites
+
+- AWS account with IAM permissions for EKS, VPC, and IAM
+- GitHub account for OAuth and repository hosting
+- Command-line tools: `terraform`, `kubectl`, `helm`, `aws`, `sops`, `age`
+
+### 1. Clone the Repository
 
 ```bash
-# macOS
-brew install terraform kubectl helm awscli sops age
-
-# Install helm-secrets plugin
-helm plugin install https://github.com/jkroepke/helm-secrets
-
-# Verify installations
-terraform --version    # >= 1.5.0
-kubectl version        # >= 1.25
-helm version           # >= 3.0
-aws --version          # AWS CLI v2
-sops --version
-age --version
+git clone https://github.com/Rania193/DevOps-CES-Challenge.git
+cd DevOps-CES-Challenge
 ```
 
-### AWS Configuration
+### 2. Configure SOPS Encryption
+
+Generate an age key for encrypting secrets:
 
 ```bash
-aws configure
-# Enter your AWS Access Key ID, Secret Access Key, and region (eu-west-1)
-```
-
-### SOPS/age Setup
-
-```bash
-# Generate encryption key
 mkdir -p ~/.config/sops/age
 age-keygen -o ~/.config/sops/age/keys.txt
 
-# Note the public key (starts with age1...)
-cat ~/.config/sops/age/keys.txt
-
-# Add to shell profile
-echo 'export SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt' >> ~/.zshrc
-source ~/.zshrc
+# Add to your shell profile
+export SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt
 ```
 
----
+Update `.sops.yaml` with your age public key.
 
-## 🚀 Deployment Guide
+### 3. Provision Infrastructure with Terraform
 
-### Step 1: Clone and Configure
-
-```bash
-git clone https://github.com/YOUR_USERNAME/DevOps-CES-Challenge.git
-cd DevOps-CES-Challenge
-
-# Update .sops.yaml with your age public key
-```
-
-### Step 2: Bootstrap Terraform State
+Bootstrap the Terraform state backend:
 
 ```bash
 cd terraform/bootstrap
-terraform init
-terraform apply
-# Creates S3 bucket and DynamoDB table for state management
+terraform init && terraform apply
 ```
 
-### Step 3: Deploy Infrastructure
+Deploy the infrastructure:
 
 ```bash
-cd ../  # Back to terraform/
-
-# IMPORTANT: Set node count to 2 (t3.medium can only run ~17 pods)
-# Edit terraform.tfvars: node_desired_size = 2
-
-terraform init
-terraform apply
-# Takes ~15-20 minutes
+cd ..
+terraform init && terraform apply
 ```
 
-### Step 4: Configure kubectl
+This creates the VPC, EKS cluster, IAM roles, and Elastic IP. Takes approximately 15-20 minutes.
+
+### 4. Configure kubectl
 
 ```bash
 aws eks update-kubeconfig --region eu-west-1 --name datavisyn-dev-cluster
 kubectl get nodes
-# Should show 2 nodes
 ```
 
-### Step 5: Get Static IP for DNS
+### 5. Get the Static IP
 
 ```bash
 terraform output nlb_eip_public_ip
-# Example: 54.77.17.178 - This is your PERMANENT IP!
 ```
 
-### Step 6: Configure DNS (DuckDNS)
+Note this IP - you will use it for DNS configuration.
 
-1. Go to https://www.duckdns.org
-2. Create two domains pointing to your Elastic IP:
-   - `datavisyn-demo` → webapp
-   - `datavisyn-argocd` → ArgoCD UI
+### 6. Configure DNS (DuckDNS)
 
-### Step 7: Install ArgoCD
+Go to [DuckDNS](https://www.duckdns.org) and create two domains pointing to your Elastic IP:
+
+| Domain | Purpose |
+|--------|---------|
+| `datavisyn-demo.duckdns.org` | Main webapp |
+| `datavisyn-argocd.duckdns.org` | ArgoCD dashboard |
+
+### 7. Create GitHub OAuth Apps
+
+Create two OAuth applications at [GitHub Developer Settings](https://github.com/settings/developers):
+
+**Webapp OAuth App:**
+- Homepage URL: `https://datavisyn-demo.duckdns.org`
+- Callback URL: `https://datavisyn-demo.duckdns.org/oauth2/callback`
+
+**ArgoCD OAuth App:**
+- Homepage URL: `https://datavisyn-argocd.duckdns.org`
+- Callback URL: `https://datavisyn-argocd.duckdns.org/api/dex/callback`
+
+### 8. Configure Secrets
+
+Edit the encrypted secrets file with your webapp OAuth credentials:
+
+```bash
+sops secrets/secrets.enc.yaml
+```
+
+Update the values:
+```yaml
+oauth2:
+  clientID: "your-webapp-client-id"
+  clientSecret: "your-webapp-client-secret"
+  cookieSecret: "generate-with-openssl-rand-base64-32"
+```
+
+### 9. Install ArgoCD
 
 ```bash
 kubectl create namespace argocd
@@ -212,7 +254,7 @@ kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/st
 kubectl wait --for=condition=Ready pods --all -n argocd --timeout=300s
 ```
 
-### Step 8: Configure helm-secrets in ArgoCD
+### 10. Configure ArgoCD for helm-secrets
 
 ```bash
 # Create secret with age key
@@ -223,166 +265,88 @@ kubectl -n argocd create secret generic helm-secrets-private-keys \
 kubectl patch configmap argocd-cm -n argocd --type merge -p \
   '{"data":{"helm.valuesFileSchemes":"secrets+age-import,secrets+age-import-kubernetes,secrets,https"}}'
 
-# Mount age key in repo-server
+# Apply repo-server patch
 kubectl patch deployment argocd-repo-server -n argocd \
   --patch-file argocd/config/argocd-repo-server-patch.yaml
-
-kubectl rollout status deployment/argocd-repo-server -n argocd
 ```
 
-### Step 9: Create GitHub OAuth Apps
+### 11. Configure ArgoCD OAuth
 
-You need **TWO** OAuth apps:
-
-| App | Homepage URL | Callback URL |
-|-----|--------------|--------------|
-| **Webapp** | `https://datavisyn-demo.duckdns.org` | `https://datavisyn-demo.duckdns.org/oauth2/callback` |
-| **ArgoCD** | `https://datavisyn-argocd.duckdns.org` | `https://datavisyn-argocd.duckdns.org/api/dex/callback` |
-
-1. Go to https://github.com/settings/developers
-2. Create each OAuth App and save the Client ID and Client Secret
-
-### Step 10: Configure Secrets
+Add ArgoCD OAuth credentials:
 
 ```bash
-# Edit secrets file
-sops secrets/secrets.enc.yaml
-
-# Update with webapp OAuth credentials:
-# oauth2:
-#   clientID: "your-webapp-client-id"
-#   clientSecret: "your-webapp-client-secret"
-#   cookieSecret: "$(openssl rand -base64 32)"
-```
-
-### Step 11: Configure ArgoCD OAuth
-
-```bash
-# Add ArgoCD OAuth credentials to argocd-secret
 kubectl -n argocd patch secret argocd-secret --type='json' -p="[
   {\"op\": \"add\", \"path\": \"/data/dex.github.clientID\", \"value\": \"$(echo -n 'YOUR_ARGOCD_CLIENT_ID' | base64)\"},
   {\"op\": \"add\", \"path\": \"/data/dex.github.clientSecret\", \"value\": \"$(echo -n 'YOUR_ARGOCD_CLIENT_SECRET' | base64)\"}
 ]"
+```
 
-# Apply ArgoCD configuration
-kubectl apply -f argocd/config/argocd-github-oauth.yaml
-kubectl apply -f argocd/config/argocd-cmd-params-cm.yaml
-kubectl apply -f argocd/config/argocd-ingress.yaml
+Apply ArgoCD configuration:
 
-# Restart ArgoCD
+```bash
+kubectl apply -f argocd/config/
 kubectl -n argocd rollout restart deployment argocd-server argocd-dex-server
 ```
 
-### Step 12: Deploy Applications
+### 12. Deploy Applications
+
+Commit and push your configuration, then deploy:
 
 ```bash
-# Commit and push any changes
-git add -A
-git commit -m "Configure deployment"
-git push
-
-# Deploy all applications via ArgoCD
+git add -A && git commit -m "Configure deployment" && git push
 kubectl apply -f argocd/apps/
 ```
 
-### Step 13: Verify Deployment
+---
 
-```bash
-# Check all applications are synced
-kubectl get applications -n argocd
+## Access Links & Domains
 
-# Check certificates are issued
-kubectl get certificate -A
-
-# Check all pods are running
-kubectl get pods -A
-```
+| Service | URL | Notes |
+|---------|-----|-------|
+| Webapp | https://datavisyn-demo.duckdns.org | Protected by GitHub OAuth |
+| ArgoCD | https://datavisyn-argocd.duckdns.org | GitOps dashboard |
 
 ---
 
-## ✅ Verification
+## Secrets Rotation
 
-### Test Webapp Authentication
-
-1. Open https://datavisyn-demo.duckdns.org
-2. You should be redirected to GitHub login
-3. After authentication, you'll see the webapp
-
-![Webapp Screenshot](docs/screenshots/webapp.png)
-<!-- TODO: Add webapp screenshot -->
-
-### Test ArgoCD Authentication
-
-1. Open https://datavisyn-argocd.duckdns.org
-2. Click "LOG IN VIA GITHUB"
-3. After authentication, you'll see the ArgoCD dashboard
-
-![ArgoCD Screenshot](docs/screenshots/argocd.png)
-<!-- TODO: Add ArgoCD screenshot -->
-
-### Verify TLS Certificates
+### Rotating Webapp OAuth Credentials
 
 ```bash
-# Check certificate status
-kubectl get certificate -A
-# All should show READY: True
-
-# Verify in browser - padlock icon should appear
-```
-
----
-
-## 🔐 Secrets Management
-
-### How Secrets Work
-
-1. **Secrets are encrypted** using SOPS + age before committing to Git
-2. **ArgoCD decrypts** secrets at deployment time using helm-secrets
-3. **Kubernetes receives** plaintext secrets (never stored in Git)
-
-### Rotating Secrets
-
-```bash
-# 1. Edit the encrypted secrets file
+# Edit encrypted secrets
 sops secrets/secrets.enc.yaml
 
-# 2. Update the values you want to rotate
-# oauth2:
-#   clientSecret: "new-secret-value"
-#   cookieSecret: "new-cookie-secret"
-
-# 3. Save and commit
+# Update the values, save, then commit
 git add secrets/secrets.enc.yaml
-git commit -m "Rotate OAuth secrets"
+git commit -m "Rotate OAuth credentials"
 git push
 
-# 4. ArgoCD automatically detects changes and redeploys
-#    Or manually sync: argocd app sync oauth2-proxy
+# ArgoCD will automatically detect and apply the changes
 ```
 
 ### Rotating ArgoCD OAuth Credentials
 
 ```bash
-# Update the secret directly
+# Update the secret
 kubectl -n argocd patch secret argocd-secret --type='json' -p="[
   {\"op\": \"replace\", \"path\": \"/data/dex.github.clientSecret\", \"value\": \"$(echo -n 'NEW_SECRET' | base64)\"}
 ]"
 
-# Restart Dex server
+# Restart the Dex server
 kubectl -n argocd rollout restart deployment argocd-dex-server
 ```
 
-### Generating New Encryption Keys
+### Rotating the age Encryption Key
 
 ```bash
-# Generate new age key
+# Generate new key
 age-keygen -o new-key.txt
 
-# Re-encrypt secrets with new key
-sops --rotate --in-place secrets/secrets.enc.yaml
+# Re-encrypt existing secrets
+SOPS_AGE_KEY_FILE=new-key.txt sops --rotate --in-place secrets/secrets.enc.yaml
 
-# Update .sops.yaml with new public key
-# Distribute new key to ArgoCD
+# Update .sops.yaml with the new public key
+# Update the key in ArgoCD
 kubectl -n argocd delete secret helm-secrets-private-keys
 kubectl -n argocd create secret generic helm-secrets-private-keys \
   --from-file=key.txt=new-key.txt
@@ -390,114 +354,36 @@ kubectl -n argocd create secret generic helm-secrets-private-keys \
 
 ---
 
-## 🏭 Demo vs Production
+## Notes
 
-This project uses a **cost-optimized demo configuration**:
-
-| Aspect | Demo (This Project) | Production |
-|--------|---------------------|------------|
-| **Availability** | Single AZ | Multi-AZ (3 AZs) |
-| **Elastic IPs** | 1 EIP (~$3.65/mo) | 3 EIPs (~$11/mo) |
-| **DNS** | DuckDNS (free) | Route 53 (~$0.50/mo) |
-| **Nodes** | 2x t3.medium | Auto-scaling group |
-| **Total Cost** | ~$75/month | ~$150+/month |
-
-### Production Recommendations
-
-1. **Use Route 53** - ALIAS records handle dynamic NLB IPs automatically
-2. **Enable Multi-AZ** - Survive availability zone failures
-3. **Add monitoring** - Prometheus + Grafana for observability
-4. **Configure backups** - Regular EKS and secrets backups
-5. **Use private subnets** - Worker nodes in private subnets only
+- All secrets are encrypted with SOPS and should never be committed in plaintext
+- TLS certificates are automatically managed by cert-manager and renewed before expiration
+- The Elastic IP ensures the load balancer IP never changes, simplifying DNS management
+- For troubleshooting, check ArgoCD sync status and Kubernetes pod logs
 
 ---
 
-## 🧹 Cleanup
+## References
 
-To destroy all resources:
+### Documentation
 
-```bash
-# Delete ArgoCD applications first
-kubectl delete -f argocd/apps/
-
-# Delete ArgoCD
-kubectl delete -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-
-# Destroy infrastructure
-cd terraform
-terraform destroy
-
-# Destroy state backend (optional)
-cd bootstrap
-terraform destroy
-```
-
----
-
-## 📚 Architecture Decisions
-
-### Why AWS EKS?
-- Managed Kubernetes reduces operational overhead
-- Native AWS integrations (IAM, VPC, ALB)
-- Auto-scaling and high availability built-in
-
-### Why ArgoCD + GitOps?
-- Git becomes the single source of truth
-- Automated deployments on every push
-- Easy rollbacks via Git history
-- Audit trail of all changes
-
-### Why SOPS + age over Sealed Secrets?
-- Secrets can be edited locally before committing
-- Works with any Git provider
-- No cluster-side controller required for encryption
-- Better developer experience
-
-### Why oauth2-proxy over ALB OIDC?
-- Works with any ingress controller
-- More flexible authentication rules
-- Easier to test locally
-- Better control over session management
-
-### Why Elastic IP?
-- Static IP for DNS configuration
-- No need to update DNS when NLB recreates
-- Required for DuckDNS (doesn't support CNAME)
-
----
-
-## 🔗 References
-
-- [Terraform AWS Provider](https://registry.terraform.io/providers/hashicorp/aws/latest)
 - [AWS EKS Documentation](https://docs.aws.amazon.com/eks/)
-- [ArgoCD Documentation](https://argo-cd.readthedocs.io/)
-- [helm-secrets Plugin](https://github.com/jkroepke/helm-secrets)
-- [oauth2-proxy Documentation](https://oauth2-proxy.github.io/oauth2-proxy/)
-- [cert-manager Documentation](https://cert-manager.io/docs/)
 - [NGINX Ingress Controller](https://kubernetes.github.io/ingress-nginx/)
+- [OAuth2 Proxy](https://oauth2-proxy.github.io/oauth2-proxy/)
+- [ArgoCD](https://argo-cd.readthedocs.io/)
+- [cert-manager](https://cert-manager.io/)
+- [helm-secrets](https://github.com/jkroepke/helm-secrets)
+- [SOPS](https://github.com/getsops/sops)
 
----
+### Terraform Providers
 
-## 📸 Screenshots
+- [hashicorp/aws](https://registry.terraform.io/providers/hashicorp/aws/latest)
+- [hashicorp/kubernetes](https://registry.terraform.io/providers/hashicorp/kubernetes/latest)
+- [hashicorp/helm](https://registry.terraform.io/providers/hashicorp/helm/latest)
 
-### ArgoCD Dashboard
-![ArgoCD Dashboard](docs/screenshots/argocd-dashboard.png)
-<!-- TODO: Add screenshot -->
+### Helm Charts
 
-### Application Sync Status
-![App Sync](docs/screenshots/argocd-apps.png)
-<!-- TODO: Add screenshot -->
-
-### GitHub OAuth Login
-![OAuth Login](docs/screenshots/github-oauth.png)
-<!-- TODO: Add screenshot -->
-
-### Webapp
-![Webapp](docs/screenshots/webapp.png)
-<!-- TODO: Add screenshot -->
-
----
-
-## 👤 Author
-
-Built for the Datavisyn DevOps CES Challenge.
+- [ingress-nginx](https://artifacthub.io/packages/helm/ingress-nginx/ingress-nginx)
+- [oauth2-proxy](https://artifacthub.io/packages/helm/oauth2-proxy/oauth2-proxy)
+- [cert-manager](https://artifacthub.io/packages/helm/cert-manager/cert-manager)
+- [argo-cd](https://artifacthub.io/packages/helm/argo/argo-cd)
