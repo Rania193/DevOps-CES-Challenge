@@ -1,0 +1,36 @@
+# ArgoCD Ingress with TLS
+#
+# Prerequisites:
+#   1. Create DuckDNS domain: datavisyn-argocd.duckdns.org
+#   2. Point it to your ELB IP (same as webapp)
+#   3. Update GitHub OAuth App callback URL
+#
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-server-ingress
+  namespace: argocd
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # Use HTTP backend since ArgoCD runs in insecure mode
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    # Force HTTPS redirect
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - datavisyn-argocd.duckdns.org
+      secretName: argocd-server-tls
+  rules:
+    - host: datavisyn-argocd.duckdns.org
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  number: 80
+

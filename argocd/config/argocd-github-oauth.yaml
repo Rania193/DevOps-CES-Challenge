@@ -9,8 +9,10 @@ metadata:
     app.kubernetes.io/name: argocd-cm
     app.kubernetes.io/part-of: argocd
 data:
-  # ArgoCD server URL (for port-forward)
-  url: https://localhost:8080
+  # ArgoCD server URL - UPDATE THIS when switching between port-forward and ingress
+  # Port-forward: https://localhost:8080
+  # Ingress:      https://datavisyn-argocd.duckdns.org
+  url: https://datavisyn-argocd.duckdns.org
   
   # Dex configuration for GitHub OAuth
   # NOTE: Secret references use $key format, where 'key' must exist in 'argocd-secret'

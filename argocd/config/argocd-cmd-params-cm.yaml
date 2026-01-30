@@ -1,0 +1,18 @@
+# ArgoCD Server Configuration for Ingress
+#
+# This configures ArgoCD to work properly behind an ingress:
+# - Runs in insecure mode (TLS terminated at ingress)
+# - Allows external URL access
+#
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-cmd-params-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  # Run ArgoCD server without TLS (ingress handles TLS)
+  server.insecure: "true"
+
