@@ -34,6 +34,11 @@ ingress:
     nginx.ingress.kubernetes.io/auth-url: "http://oauth2-proxy.oauth2-proxy.svc.cluster.local:80/oauth2/auth"
     nginx.ingress.kubernetes.io/auth-signin: "https://$host/oauth2/start?rd=$escaped_request_uri"
     nginx.ingress.kubernetes.io/auth-response-headers: "X-Auth-Request-User,X-Auth-Request-Email"
+    # Skip OAuth2 for ACME challenge (cert-manager needs unauthenticated access)
+    nginx.ingress.kubernetes.io/auth-snippet: |
+      if ($request_uri ~* "^/.well-known/acme-challenge/") {
+        return 200;
+      }
 
 # TLS/HTTPS configuration
 tls:
