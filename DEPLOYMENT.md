@@ -1,0 +1,374 @@
+# 🚀 Deployment Guide
+
+Complete step-by-step guide to deploy this project.
+
+## Prerequisites
+
+Make sure you have these tools installed:
+
+```bash
+# Check versions
+aws --version        # AWS CLI v2
+terraform --version  # >= 1.5.0
+kubectl version      # >= 1.25
+helm version         # >= 3.0
+```
+
+**AWS Setup:**
+- AWS account with admin access
+- AWS CLI configured: `aws configure`
+
+---
+
+## Step 1: Bootstrap Terraform State (One-Time)
+
+This creates an S3 bucket to store Terraform state remotely.
+
+```bash
+cd terraform/bootstrap
+
+terraform init
+terraform apply
+```
+
+Type `yes` when prompted. This creates:
+- S3 bucket: `ces-challenge-terraform-state`
+- DynamoDB table: `ces-challenge-terraform-lock`
+
+---
+
+## Step 2: Deploy Infrastructure
+
+This creates the VPC, EKS cluster, and IAM roles.
+
+```bash
+cd ../   # Back to terraform/ directory
+
+terraform init
+terraform apply
+```
+
+Type `yes` when prompted. **This takes ~15-20 minutes.**
+
+When complete, configure kubectl:
+
+```bash
+# Copy the command from terraform output, or run:
+aws eks update-kubeconfig --region eu-west-1 --name datavisyn-dev-cluster
+```
+
+Verify connection:
+
+```bash
+kubectl get nodes
+# Should show your worker node(s)
+```
+
+---
+
+## Step 3: Install ArgoCD
+
+```bash
+# Create namespace
+kubectl create namespace argocd
+
+# Install ArgoCD
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+# Wait for pods to be ready (~2 minutes)
+kubectl wait --for=condition=Ready pods --all -n argocd --timeout=300s
+```
+
+Get ArgoCD admin password:
+
+```bash
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+echo  # Print newline
+```
+
+Access ArgoCD UI (optional):
+
+```bash
+# Port forward to access UI
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+
+# Open: https://localhost:8080
+# Username: admin
+# Password: (from command above)
+```
+
+---
+
+## Step 3.5: (Optional) Enable GitHub Login for ArgoCD
+
+Instead of using username/password, you can login to ArgoCD with GitHub!
+
+> **🐔🥚 Why isn't this using SOPS/age like other secrets?**
+>
+> This is a **chicken-and-egg problem**:
+> - To use SOPS/age decryption, we need ArgoCD + helm-secrets configured
+> - But ArgoCD OAuth config needs to be applied BEFORE helm-secrets is set up
+> - helm-secrets is configured in Step 4, but we're in Step 3.5!
+>
+> ```
+> Step 3:   Install ArgoCD (basic)
+> Step 3.5: Configure ArgoCD OAuth  ◄── HERE! helm-secrets not ready yet
+> Step 4:   Set up helm-secrets     ◄── SOPS/age decryption works after this
+> Step 5:   Deploy apps (oauth2-proxy uses SOPS here ✓)
+> ```
+>
+> Therefore, we create this secret manually via `kubectl`. The secret is never 
+> stored in Git - it only exists in the cluster after you create it.
+
+### Quick Setup (using script):
+
+```bash
+./scripts/setup-argocd-oauth.sh
+```
+
+### Manual Setup:
+
+1. **Create a GitHub OAuth App** at https://github.com/settings/developers:
+   - Application name: `datavisyn-argocd`
+   - Homepage URL: `https://localhost:8080`
+   - Authorization callback URL: `https://localhost:8080/api/dex/callback`
+
+2. **Add OAuth credentials to ArgoCD's secret:**
+
+   ArgoCD reads secrets from `argocd-secret`. Add your GitHub OAuth credentials:
+
+```bash
+# Replace YOUR_CLIENT_ID and YOUR_CLIENT_SECRET with your actual values
+kubectl -n argocd patch secret argocd-secret --type='json' -p="[
+  {\"op\": \"add\", \"path\": \"/data/dex.github.clientID\", \"value\": \"$(echo -n 'YOUR_CLIENT_ID' | base64)\"},
+  {\"op\": \"add\", \"path\": \"/data/dex.github.clientSecret\", \"value\": \"$(echo -n 'YOUR_CLIENT_SECRET' | base64)\"}
+]"
+```
+
+3. **Apply the configuration:**
+```bash
+kubectl apply -f argocd/argocd-github-oauth.yaml
+```
+
+4. **Restart ArgoCD:**
+```bash
+kubectl -n argocd rollout restart deployment argocd-server argocd-dex-server
+kubectl -n argocd rollout status deployment argocd-dex-server
+```
+
+5. **Verify no errors in logs:**
+```bash
+kubectl logs -n argocd -l app.kubernetes.io/name=argocd-dex-server --tail=20
+# Should NOT show "key does not exist in secret" warnings
+```
+
+6. **Access ArgoCD:**
+```bash
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+# Open: https://localhost:8080
+# Click "LOG IN VIA GITHUB"
+```
+
+---
+
+## Step 4: Set Up Secrets for helm-secrets
+
+ArgoCD needs your age key to decrypt secrets.
+
+```bash
+# Create the secret with your age key
+kubectl -n argocd create secret generic helm-secrets-private-keys \
+  --from-file=key.txt=$HOME/.config/sops/age/keys.txt
+
+# Update ArgoCD config to allow secrets schemes
+kubectl patch configmap argocd-cm -n argocd --type merge -p '{"data":{"helm.valuesFileSchemes":"secrets+age-import,secrets+age-import-kubernetes,secrets,https"}}'
+
+# Apply the repo-server patch for helm-secrets
+kubectl patch deployment argocd-repo-server -n argocd --patch-file argocd/argocd-repo-server-patch.yaml
+
+# Wait for repo-server to restart
+kubectl rollout status deployment/argocd-repo-server -n argocd
+```
+
+---
+
+## Step 5: Deploy Applications via ArgoCD
+
+```bash
+# Apply all ArgoCD applications
+kubectl apply -f argocd/applications.yaml
+```
+
+This deploys (in order via sync-waves):
+1. **cert-manager** - For SSL certificates
+2. **ingress-nginx** - Load balancer & traffic routing
+3. **oauth2-proxy** - GitHub authentication
+4. **webapp** - Your application
+
+Watch the deployments:
+
+```bash
+# Check ArgoCD application status
+kubectl get applications -n argocd
+
+# Or watch all pods
+kubectl get pods -A -w
+```
+
+---
+
+## Step 6: Get Load Balancer URL
+
+Wait for ingress-nginx to create the AWS Load Balancer (~2-3 minutes):
+
+```bash
+# Get the ELB hostname
+kubectl get svc -n ingress-nginx ingress-nginx-controller
+
+# Or just the hostname:
+kubectl get svc -n ingress-nginx ingress-nginx-controller \
+  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+```
+
+---
+
+## Step 7: Update DuckDNS
+
+Point your DuckDNS domain to the Load Balancer:
+
+1. Get the ELB IP:
+```bash
+# Resolve the ELB hostname to an IP
+dig +short $(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].hostname}') | head -1
+```
+
+2. Go to https://www.duckdns.org
+3. Find your domain `datavisyn-demo`
+4. Enter the IP address and click "update ip"
+
+---
+
+## Step 8: Configure GitHub OAuth App
+
+1. Go to: https://github.com/settings/developers
+2. Click "New OAuth App" (or edit existing)
+3. Fill in:
+   - **Application name:** `datavisyn-demo` (or anything)
+   - **Homepage URL:** `https://datavisyn-demo.duckdns.org`
+   - **Authorization callback URL:** `https://datavisyn-demo.duckdns.org/oauth2/callback`
+4. Click "Register application"
+5. Copy the **Client ID**
+6. Generate a new **Client Secret** and copy it
+
+---
+
+## Step 9: Update Secrets
+
+Update your encrypted secrets with the GitHub OAuth credentials:
+
+```bash
+# Edit the secrets file (sops will decrypt/encrypt automatically)
+sops secrets/secrets.enc.yaml
+```
+
+Update the values:
+```yaml
+oauth2:
+  clientID: "your-github-client-id"
+  clientSecret: "your-github-client-secret"
+  cookieSecret: "generate-with-openssl-rand-base64-32"
+```
+
+Generate a cookie secret:
+```bash
+openssl rand -base64 32
+```
+
+Save and commit:
+```bash
+git add secrets/secrets.enc.yaml
+git commit -m "Update OAuth secrets"
+git push
+```
+
+ArgoCD will automatically redeploy oauth2-proxy with the new secrets.
+
+---
+
+## Step 10: Verify & Test
+
+1. **Check all pods are running:**
+```bash
+kubectl get pods -A
+```
+
+2. **Check certificate is issued:**
+```bash
+kubectl get certificate -A
+# Should show "Ready: True"
+```
+
+3. **Visit your app:**
+```
+https://datavisyn-demo.duckdns.org
+```
+
+You should be redirected to GitHub login, then see your webapp!
+
+---
+
+## Troubleshooting
+
+### ArgoCD apps not syncing
+```bash
+# Check app status
+kubectl get applications -n argocd
+kubectl describe application <app-name> -n argocd
+```
+
+### Certificate not issuing
+```bash
+# Check cert-manager logs
+kubectl logs -n cert-manager -l app=cert-manager
+
+# Check certificate status
+kubectl describe certificate -n webapp
+```
+
+### OAuth not working
+```bash
+# Check oauth2-proxy logs
+kubectl logs -n oauth2-proxy -l app=oauth2-proxy
+
+# Verify the redirect URL matches GitHub OAuth App settings
+```
+
+### Can't reach the app
+```bash
+# Check ingress
+kubectl get ingress -A
+kubectl describe ingress -n webapp
+
+# Check Load Balancer
+kubectl get svc -n ingress-nginx
+```
+
+---
+
+## Cleanup
+
+To destroy everything:
+
+```bash
+# Delete ArgoCD apps first
+kubectl delete -f argocd/applications.yaml
+
+# Destroy infrastructure
+cd terraform
+terraform destroy
+
+# Destroy bootstrap (optional - keeps state bucket)
+cd bootstrap
+terraform destroy
+```
+

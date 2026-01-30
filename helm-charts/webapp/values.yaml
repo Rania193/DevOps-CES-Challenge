@@ -25,8 +25,19 @@ ingress:
   enabled: true
   className: nginx
   
+  # Your domain (leave empty to accept all hosts)
+  # Examples: "myapp.duckdns.org" or "myapp.xyz"
+  host: "datavisyn-demo.duckdns.org"
+  
   annotations:
     # OAuth2 authentication
     nginx.ingress.kubernetes.io/auth-url: "http://oauth2-proxy.oauth2-proxy.svc.cluster.local:80/oauth2/auth"
-    nginx.ingress.kubernetes.io/auth-signin: "http://$host/oauth2/start?rd=$escaped_request_uri"
+    nginx.ingress.kubernetes.io/auth-signin: "https://$host/oauth2/start?rd=$escaped_request_uri"
     nginx.ingress.kubernetes.io/auth-response-headers: "X-Auth-Request-User,X-Auth-Request-Email"
+
+# TLS/HTTPS configuration
+tls:
+  enabled: true
+  email: "rania.fahmy22@gmail.com"
+  # Secret name where the certificate will be stored
+  secretName: webapp-tls

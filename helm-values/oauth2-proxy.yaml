@@ -1,12 +1,19 @@
 extraArgs:
   provider: github
-  redirect-url: "http://ab5fcf53b5eb345c99124a586aebf855-a20891d2923cee7e.elb.eu-west-1.amazonaws.com/oauth2/callback"  # Update this
-  cookie-secure: "false"
+  # UPDATE THIS with your domain or ELB URL
+  redirect-url: "https://datavisyn-demo.duckdns.org/oauth2/callback"
+  # Set to "true" when using HTTPS, "false" for HTTP
+  cookie-secure: "true"
 
 ingress:
   enabled: true
   className: nginx
   path: /oauth2
+  # Leave empty to accept all hosts, or specify your domain
   hosts:
     - ""
-# test change
+  
+  tls:
+    - secretName: oauth2-proxy-tls
+      hosts:
+        - datavisyn-demo.duckdns.org

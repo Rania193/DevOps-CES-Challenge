@@ -1,0 +1,57 @@
+---
+# ConfigMap for ArgoCD configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  # ArgoCD server URL (for port-forward)
+  url: https://localhost:8080
+  
+  # Dex configuration for GitHub OAuth
+  # NOTE: Secret references use $key format, where 'key' must exist in 'argocd-secret'
+  dex.config: |
+    connectors:
+      - type: github
+        id: github
+        name: GitHub
+        config:
+          clientID: $dex.github.clientID
+          clientSecret: $dex.github.clientSecret
+          # Uncomment to restrict to specific GitHub org:
+          # orgs:
+          #   - name: your-github-org
+
+---
+# ConfigMap for RBAC
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-rbac-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  # Policy format: p, <subject>, <resource>, <action>, <project>, allow/deny
+  # Role format: g, <user>, <role>
+  policy.csv: |
+    # Grant admin access to specific GitHub users
+    # Replace 'Rania193' with your GitHub username
+    g, Rania193, role:admin
+    
+    # You can add more users:
+    # g, another-github-user, role:admin
+    # g, readonly-user, role:readonly
+  
+  # Default policy for users not explicitly listed
+  # Options: role:readonly, role:admin, or "" (no access)
+  policy.default: role:readonly
+  
+  # Map GitHub username to ArgoCD user
+  scopes: "[groups, email]"
+

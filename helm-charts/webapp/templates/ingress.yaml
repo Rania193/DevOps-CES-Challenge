@@ -6,10 +6,23 @@ metadata:
   name: {{ .Release.Name }}-webapp
   annotations:
     {{- toYaml .Values.ingress.annotations | nindent 4 }}
+    {{- if .Values.tls.enabled }}
+    # Tell cert-manager to automatically provision a certificate
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    {{- end }}
 spec:
   ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host }}
+      secretName: {{ .Values.tls.secretName }}
+  {{- end }}
   rules:
-    - http:
+    - {{- if .Values.ingress.host }}
+      host: {{ .Values.ingress.host }}
+      {{- end }}
+      http:
         paths:
           - path: /
             pathType: Prefix
