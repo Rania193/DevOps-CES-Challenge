@@ -49,3 +49,19 @@ output "region" {
   description = "AWS region where the cluster is deployed"
   value       = var.aws_region
 }
+
+# NLB Elastic IP - use for static IP load balancer
+output "nlb_eip_allocation_id" {
+  description = "Elastic IP allocation ID for NLB - add to ingress-nginx.yaml"
+  value       = module.vpc.nlb_eip_id
+}
+
+output "nlb_eip_public_ip" {
+  description = "Static public IP for your load balancer - use in DuckDNS"
+  value       = module.vpc.nlb_eip_ip
+}
+
+output "nlb_subnet_id" {
+  description = "Public subnet ID for single-AZ NLB - add to ingress-nginx.yaml"
+  value       = module.vpc.public_subnet_ids[0]
+}

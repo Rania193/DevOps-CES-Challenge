@@ -22,3 +22,13 @@ output "nat_gateway_ip" {
   description = "Public IP of the NAT Gateway"
   value       = aws_eip.nat[0].public_ip
 }
+
+output "nlb_eip_id" {
+  description = "Allocation ID of NLB Elastic IP (for ingress-nginx)"
+  value       = aws_eip.nlb[0].id
+}
+
+output "nlb_eip_ip" {
+  description = "Static public IP for your load balancer - use in DuckDNS"
+  value       = aws_eip.nlb[0].public_ip
+}

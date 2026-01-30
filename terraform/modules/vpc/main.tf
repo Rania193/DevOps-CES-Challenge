@@ -59,13 +59,25 @@ resource "aws_subnet" "private" {
   }
 }
 
-# ELASTIC IP
+# ELASTIC IP for NAT Gateway
 resource "aws_eip" "nat" {
   count  = 1
   domain = "vpc"
 
   tags = {
     Name = "${var.name_prefix}-nat-eip"
+  }
+
+  depends_on = [aws_internet_gateway.main]
+}
+
+# ELASTIC IP for NLB (single AZ for cost savings - fine for demo)
+resource "aws_eip" "nlb" {
+  count  = 1
+  domain = "vpc"
+
+  tags = {
+    Name = "${var.name_prefix}-nlb-eip"
   }
 
   depends_on = [aws_internet_gateway.main]

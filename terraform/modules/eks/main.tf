@@ -136,10 +136,10 @@ resource "aws_eks_node_group" "main" {
     aws_iam_role_policy_attachment.node_policies
   ]
 
-  # prevent accidental deletion
-  lifecycle {
-    ignore_changes = [scaling_config[0].desired_size]
-  }
+#   # prevent accidental deletion
+#   lifecycle {
+#     ignore_changes = [scaling_config[0].desired_size]
+#   }
 }
 
 # EKS ADDONS

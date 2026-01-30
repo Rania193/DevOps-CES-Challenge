@@ -12,6 +12,7 @@ aws --version        # AWS CLI v2
 terraform --version  # >= 1.5.0
 kubectl version      # >= 1.25
 helm version         # >= 3.0
+sops --version       # For secrets encryption
 ```
 
 **AWS Setup:**
@@ -41,6 +42,16 @@ Type `yes` when prompted. This creates:
 
 This creates the VPC, EKS cluster, and IAM roles.
 
+> ⚠️ **IMPORTANT: Node Capacity**
+> 
+> t3.medium instances can only run ~17 pods. With all our apps (ArgoCD, cert-manager, 
+> ingress-nginx, oauth2-proxy, webapp), you'll hit this limit!
+> 
+> **Set `node_desired_size = 2`** in `terraform.tfvars` before applying:
+> ```hcl
+> node_desired_size = 2   # Need at least 2 nodes for all pods
+> ```
+
 ```bash
 cd ../   # Back to terraform/ directory
 
@@ -61,7 +72,41 @@ Verify connection:
 
 ```bash
 kubectl get nodes
-# Should show your worker node(s)
+# Should show 2 worker nodes
+```
+
+### Get Static IP Info
+
+Terraform creates an Elastic IP for the load balancer (so the IP never changes):
+
+```bash
+# Get the allocation ID (for ingress-nginx config)
+terraform output nlb_eip_allocation_id
+# Example: eipalloc-0abc123def456
+
+# Get the static IP (for DuckDNS)
+terraform output nlb_eip_public_ip
+# Example: 34.251.10.50  <-- This is your PERMANENT IP!
+
+# Get the subnet ID (for single-AZ load balancer)
+terraform output nlb_subnet_id
+# Example: subnet-0abc123def456
+```
+
+### Update ingress-nginx.yaml
+
+Edit `helm-values/ingress-nginx.yaml` and replace the placeholders with your actual values:
+
+```yaml
+service.beta.kubernetes.io/aws-load-balancer-eip-allocations: "eipalloc-xxx"
+service.beta.kubernetes.io/aws-load-balancer-subnets: "subnet-xxx"
+```
+
+Commit and push:
+```bash
+git add helm-values/ingress-nginx.yaml
+git commit -m "Configure static EIP for NLB"
+git push
 ```
 
 ---
@@ -79,14 +124,14 @@ kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/st
 kubectl wait --for=condition=Ready pods --all -n argocd --timeout=300s
 ```
 
-Get ArgoCD admin password:
+Get ArgoCD admin password (for initial login):
 
 ```bash
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
 echo  # Print newline
 ```
 
-Access ArgoCD UI (optional):
+Access ArgoCD UI:
 
 ```bash
 # Port forward to access UI
@@ -103,39 +148,24 @@ kubectl port-forward svc/argocd-server -n argocd 8080:443
 
 Instead of using username/password, you can login to ArgoCD with GitHub!
 
-> **🐔🥚 Why isn't this using SOPS/age like other secrets?**
->
-> This is a **chicken-and-egg problem**:
-> - To use SOPS/age decryption, we need ArgoCD + helm-secrets configured
-> - But ArgoCD OAuth config needs to be applied BEFORE helm-secrets is set up
-> - helm-secrets is configured in Step 4, but we're in Step 3.5!
->
-> ```
-> Step 3:   Install ArgoCD (basic)
-> Step 3.5: Configure ArgoCD OAuth  ◄── HERE! helm-secrets not ready yet
-> Step 4:   Set up helm-secrets     ◄── SOPS/age decryption works after this
-> Step 5:   Deploy apps (oauth2-proxy uses SOPS here ✓)
-> ```
->
-> Therefore, we create this secret manually via `kubectl`. The secret is never 
-> stored in Git - it only exists in the cluster after you create it.
+### Create GitHub OAuth App
 
-### Quick Setup (using script):
+1. Go to https://github.com/settings/developers
+2. Click "New OAuth App"
+3. Fill in:
+   - **Application name:** `datavisyn-argocd`
+   - **Homepage URL:** `https://localhost:8080` (must be HTTPS!)
+   - **Authorization callback URL:** `https://localhost:8080/api/dex/callback`
+4. Click "Register application"
+5. Copy the **Client ID**
+6. Generate and copy a **Client Secret**
 
-```bash
-./scripts/setup-argocd-oauth.sh
-```
+### Add Credentials to ArgoCD
 
-### Manual Setup:
-
-1. **Create a GitHub OAuth App** at https://github.com/settings/developers:
-   - Application name: `datavisyn-argocd`
-   - Homepage URL: `https://localhost:8080`
-   - Authorization callback URL: `https://localhost:8080/api/dex/callback`
-
-2. **Add OAuth credentials to ArgoCD's secret:**
-
-   ArgoCD reads secrets from `argocd-secret`. Add your GitHub OAuth credentials:
+> ⚠️ **IMPORTANT: ArgoCD Secret Format**
+> 
+> ArgoCD reads secrets from the main `argocd-secret`, NOT separate secrets!
+> The key format must be: `dex.github.clientID` and `dex.github.clientSecret`
 
 ```bash
 # Replace YOUR_CLIENT_ID and YOUR_CLIENT_SECRET with your actual values
@@ -145,24 +175,48 @@ kubectl -n argocd patch secret argocd-secret --type='json' -p="[
 ]"
 ```
 
-3. **Apply the configuration:**
+### Apply Configuration
+
 ```bash
 kubectl apply -f argocd/argocd-github-oauth.yaml
 ```
 
-4. **Restart ArgoCD:**
+### Fix RBAC Permissions
+
+> ⚠️ **IMPORTANT: Username Format**
+> 
+> ArgoCD sees your **GitHub email** as the username, NOT your GitHub username!
+> Check "User Info" in ArgoCD sidebar to see your actual username.
+
+```bash
+# Update RBAC with your GitHub email (check User Info in ArgoCD UI for exact value)
+kubectl patch configmap argocd-rbac-cm -n argocd --type merge -p '{
+  "data": {
+    "policy.csv": "g, YOUR_GITHUB_EMAIL@gmail.com, role:admin",
+    "policy.default": "role:readonly"
+  }
+}'
+
+# Or for demo, give everyone admin access:
+kubectl patch configmap argocd-rbac-cm -n argocd --type merge -p '{"data":{"policy.default":"role:admin"}}'
+```
+
+### Restart ArgoCD
+
 ```bash
 kubectl -n argocd rollout restart deployment argocd-server argocd-dex-server
 kubectl -n argocd rollout status deployment argocd-dex-server
 ```
 
-5. **Verify no errors in logs:**
+### Verify Setup
+
 ```bash
+# Check for errors - should NOT show "key does not exist" warnings
 kubectl logs -n argocd -l app.kubernetes.io/name=argocd-dex-server --tail=20
-# Should NOT show "key does not exist in secret" warnings
 ```
 
-6. **Access ArgoCD:**
+### Access ArgoCD
+
 ```bash
 kubectl port-forward svc/argocd-server -n argocd 8080:443
 # Open: https://localhost:8080
@@ -215,6 +269,22 @@ kubectl get applications -n argocd
 kubectl get pods -A -w
 ```
 
+> ⚠️ **If cert-manager-webhook is stuck in Pending:**
+> 
+> This usually means "Too many pods" on the node. Check with:
+> ```bash
+> kubectl describe pod -n cert-manager -l app.kubernetes.io/component=webhook | tail -10
+> ```
+> 
+> Fix by adding another node:
+> ```bash
+> aws eks update-nodegroup-config \
+>   --cluster-name datavisyn-dev-cluster \
+>   --nodegroup-name datavisyn-dev-nodes \
+>   --scaling-config desiredSize=2 \
+>   --region eu-west-1
+> ```
+
 ---
 
 ## Step 6: Get Load Balancer URL
@@ -234,26 +304,29 @@ kubectl get svc -n ingress-nginx ingress-nginx-controller \
 
 ## Step 7: Update DuckDNS
 
-Point your DuckDNS domain to the Load Balancer:
+Point your DuckDNS domain to the **static Elastic IP**:
 
-1. Get the ELB IP:
 ```bash
-# Resolve the ELB hostname to an IP
-dig +short $(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].hostname}') | head -1
+# Get your static IP (from Terraform output earlier)
+cd terraform
+terraform output nlb_eip_public_ip
 ```
 
-2. Go to https://www.duckdns.org
-3. Find your domain `datavisyn-demo`
-4. Enter the IP address and click "update ip"
+Go to https://www.duckdns.org and set your domain's IP to this value.
+
+> ✅ **This IP is permanent!** Unlike the default ELB, this Elastic IP never changes.
+> You only need to set it once.
 
 ---
 
-## Step 8: Configure GitHub OAuth App
+## Step 8: Configure GitHub OAuth App (for webapp)
+
+This is a SEPARATE OAuth app from the ArgoCD one!
 
 1. Go to: https://github.com/settings/developers
-2. Click "New OAuth App" (or edit existing)
+2. Click "New OAuth App"
 3. Fill in:
-   - **Application name:** `datavisyn-demo` (or anything)
+   - **Application name:** `datavisyn-webapp`
    - **Homepage URL:** `https://datavisyn-demo.duckdns.org`
    - **Authorization callback URL:** `https://datavisyn-demo.duckdns.org/oauth2/callback`
 4. Click "Register application"
@@ -267,6 +340,9 @@ dig +short $(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpa
 Update your encrypted secrets with the GitHub OAuth credentials:
 
 ```bash
+# Generate a cookie secret first
+openssl rand -base64 32
+
 # Edit the secrets file (sops will decrypt/encrypt automatically)
 sops secrets/secrets.enc.yaml
 ```
@@ -276,12 +352,7 @@ Update the values:
 oauth2:
   clientID: "your-github-client-id"
   clientSecret: "your-github-client-secret"
-  cookieSecret: "generate-with-openssl-rand-base64-32"
-```
-
-Generate a cookie secret:
-```bash
-openssl rand -base64 32
+  cookieSecret: "your-generated-cookie-secret"
 ```
 
 Save and commit:
@@ -306,6 +377,9 @@ kubectl get pods -A
 ```bash
 kubectl get certificate -A
 # Should show "Ready: True"
+
+kubectl get clusterissuer
+# Should show "letsencrypt-prod"
 ```
 
 3. **Visit your app:**
@@ -319,31 +393,90 @@ You should be redirected to GitHub login, then see your webapp!
 
 ## Troubleshooting
 
-### ArgoCD apps not syncing
+### "Too many pods" - Pod stuck in Pending
+
+t3.medium can only run ~17 pods. Add another node:
+
 ```bash
-# Check app status
-kubectl get applications -n argocd
-kubectl describe application <app-name> -n argocd
+aws eks update-nodegroup-config \
+  --cluster-name datavisyn-dev-cluster \
+  --nodegroup-name datavisyn-dev-nodes \
+  --scaling-config desiredSize=2 \
+  --region eu-west-1
+
+# Wait for node
+kubectl get nodes -w
 ```
 
+### ArgoCD GitHub OAuth - "key does not exist in secret"
+
+You're using the wrong secret format. The credentials must be in `argocd-secret`:
+
+```bash
+kubectl -n argocd patch secret argocd-secret --type='json' -p="[
+  {\"op\": \"add\", \"path\": \"/data/dex.github.clientID\", \"value\": \"$(echo -n 'YOUR_CLIENT_ID' | base64)\"},
+  {\"op\": \"add\", \"path\": \"/data/dex.github.clientSecret\", \"value\": \"$(echo -n 'YOUR_CLIENT_SECRET' | base64)\"}
+]"
+
+kubectl -n argocd rollout restart deployment argocd-dex-server
+```
+
+### ArgoCD - "permission denied" when syncing
+
+Your GitHub email needs admin permissions:
+
+```bash
+# Check your username in ArgoCD UI > User Info
+
+# Update RBAC
+kubectl patch configmap argocd-rbac-cm -n argocd --type merge -p '{
+  "data": {
+    "policy.csv": "g, your.email@gmail.com, role:admin",
+    "policy.default": "role:readonly"
+  }
+}'
+
+kubectl -n argocd rollout restart deployment argocd-server
+```
+
+### ArgoCD OAuth - "Invalid redirect URL"
+
+Make sure URLs use `https://` (ArgoCD uses HTTPS by default):
+
+- Homepage URL: `https://localhost:8080`
+- Callback URL: `https://localhost:8080/api/dex/callback`
+
+### cert-manager webhook errors
+
+If sync fails with "no endpoints available for service cert-manager-webhook":
+
+1. Check webhook pod is running: `kubectl get pods -n cert-manager`
+2. If Pending, add more nodes (see "Too many pods" above)
+3. Once running, force re-sync in ArgoCD UI
+
 ### Certificate not issuing
+
 ```bash
 # Check cert-manager logs
 kubectl logs -n cert-manager -l app=cert-manager
 
 # Check certificate status
 kubectl describe certificate -n webapp
+
+# Check ClusterIssuer exists
+kubectl get clusterissuer
 ```
 
-### OAuth not working
-```bash
-# Check oauth2-proxy logs
-kubectl logs -n oauth2-proxy -l app=oauth2-proxy
+### ArgoCD apps not syncing
 
-# Verify the redirect URL matches GitHub OAuth App settings
+```bash
+# Check app status
+kubectl get applications -n argocd
+kubectl describe application <app-name> -n argocd
 ```
 
 ### Can't reach the app
+
 ```bash
 # Check ingress
 kubectl get ingress -A
@@ -351,7 +484,30 @@ kubectl describe ingress -n webapp
 
 # Check Load Balancer
 kubectl get svc -n ingress-nginx
+
+# Verify the ELB has the correct Elastic IP
+kubectl get svc -n ingress-nginx ingress-nginx-controller -o yaml | grep -A5 "status:"
 ```
+
+### Load Balancer IP keeps changing
+
+If you didn't configure the Elastic IP, the NLB IP will change. Fix by:
+
+1. Get your EIP allocation ID: `terraform output nlb_eip_allocation_id`
+2. Get your subnet ID: `terraform output nlb_subnet_id`
+3. Update `helm-values/ingress-nginx.yaml` with these values
+4. Commit, push, and sync ingress-nginx in ArgoCD
+
+---
+
+## Quick Reference: Two GitHub OAuth Apps
+
+This project uses **TWO** GitHub OAuth apps:
+
+| App | Purpose | Callback URL |
+|-----|---------|--------------|
+| `datavisyn-argocd` | Login to ArgoCD UI | `https://localhost:8080/api/dex/callback` |
+| `datavisyn-webapp` | Protect the webapp | `https://datavisyn-demo.duckdns.org/oauth2/callback` |
 
 ---
 
@@ -371,4 +527,3 @@ terraform destroy
 cd bootstrap
 terraform destroy
 ```
-

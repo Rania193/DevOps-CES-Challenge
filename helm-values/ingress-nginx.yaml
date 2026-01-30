@@ -4,3 +4,7 @@ controller:
     annotations:
       service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
       service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+      # Static Elastic IP (never changes!)
+      service.beta.kubernetes.io/aws-load-balancer-eip-allocations: "eipalloc-07b3b138394de6d6c"
+      # Single subnet for cost savings
+      service.beta.kubernetes.io/aws-load-balancer-subnets: "subnet-026655445a2b945c2"
