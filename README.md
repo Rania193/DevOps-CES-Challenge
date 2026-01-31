@@ -8,7 +8,7 @@ A Kubernetes deployment on AWS EKS with GitHub OAuth authentication, encrypted s
 
 The platform is deployed on AWS using an EKS (Elastic Kubernetes Service) cluster. The architecture leverages several key components for security, automation, and scalability. Below is a high-level overview:
 
-![Architecture Diagram](docs/architecture.png)
+![Architecture Diagram](docs/architecture-diagram.png)
 
 ### Key Components
 
