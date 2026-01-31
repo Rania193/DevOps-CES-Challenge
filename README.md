@@ -224,14 +224,33 @@ This creates the VPC, EKS cluster, IAM roles, Elastic IP, ECR repository, and Gi
 
 **Note:** Add `github_repo = "Rania193/DevOps-CES-Challenge"` to `terraform.tfvars` to enable GitHub Actions OIDC integration.
 
-### 4. Configure kubectl
+### 4. Update Ingress-NGINX Configuration
+
+After Terraform creates the infrastructure, you need to update the ingress-nginx configuration with the actual subnet ID and EIP allocation ID:
+
+```bash
+# Get the current values
+SUBNET_ID=$(terraform output -raw nlb_subnet_id)
+EIP_ALLOC_ID=$(terraform output -raw nlb_eip_allocation_id)
+
+# Update the ingress-nginx values file
+sed -i.bak "s|service.beta.kubernetes.io/aws-load-balancer-subnets: \".*\"|service.beta.kubernetes.io/aws-load-balancer-subnets: \"$SUBNET_ID\"|" ../helm/values/ingress-nginx.yaml
+sed -i.bak "s|service.beta.kubernetes.io/aws-load-balancer-eip-allocations: \".*\"|service.beta.kubernetes.io/aws-load-balancer-eip-allocations: \"$EIP_ALLOC_ID\"|" ../helm/values/ingress-nginx.yaml
+
+# Verify the changes
+grep -E "subnets|eip-allocations" ../helm/values/ingress-nginx.yaml
+```
+
+**Important:** If you recreate the infrastructure, these IDs will change and you must update them again.
+
+### 5. Configure kubectl
 
 ```bash
 aws eks update-kubeconfig --region eu-west-1 --name datavisyn-dev-cluster
 kubectl get nodes
 ```
 
-### 5. Get the Static IP
+### 6. Get the Static IP
 
 ```bash
 terraform output nlb_eip_public_ip
@@ -239,7 +258,7 @@ terraform output nlb_eip_public_ip
 
 Note this IP - you will use it for DNS configuration.
 
-### 6. Configure DNS (DuckDNS)
+### 7. Configure DNS (DuckDNS)
 
 Go to [DuckDNS](https://www.duckdns.org) and create two domains pointing to your Elastic IP:
 
@@ -250,7 +269,7 @@ Go to [DuckDNS](https://www.duckdns.org) and create two domains pointing to your
 
 ![DuckDNS Configuration](docs/screenshots/duckdns.png)
 
-### 7. Create GitHub OAuth Apps
+### 8. Create GitHub OAuth Apps
 
 Create two OAuth applications at [GitHub Developer Settings](https://github.com/settings/developers):
 
@@ -262,7 +281,7 @@ Create two OAuth applications at [GitHub Developer Settings](https://github.com/
 - Homepage URL: `https://datavisyn-argocd.duckdns.org`
 - Callback URL: `https://datavisyn-argocd.duckdns.org/api/dex/callback`
 
-### 8. Configure Secrets
+### 9. Configure Secrets
 
 Edit the encrypted secrets file in the root directory of the project with your webapp OAuth credentials:
 
@@ -278,7 +297,7 @@ oauth2:
   cookieSecret: "generate-with-openssl-rand-base64-32"
 ```
 
-### 9. Install ArgoCD
+### 10. Install ArgoCD
 
 ```bash
 kubectl create namespace argocd
@@ -286,7 +305,7 @@ kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/st
 kubectl wait --for=condition=Ready pods --all -n argocd --timeout=300s
 ```
 
-### 10. Configure ArgoCD for helm-secrets
+### 11. Configure ArgoCD for helm-secrets
 
 ```bash
 # Create secret with age key
@@ -302,7 +321,7 @@ kubectl patch deployment argocd-repo-server -n argocd \
   --patch-file argocd/config/argocd-repo-server-patch.yaml
 ```
 
-### 11. Configure ArgoCD OAuth
+### 12. Configure ArgoCD OAuth
 
 Add ArgoCD OAuth credentials:
 
@@ -320,7 +339,7 @@ kubectl apply -f argocd/config/
 kubectl -n argocd rollout restart deployment argocd-server argocd-dex-server
 ```
 
-### 12. Configure GitHub Actions
+### 13. Configure GitHub Actions
 
 Get the GitHub Actions IAM role ARN:
 
@@ -351,7 +370,7 @@ frontend:
     pullPolicy: Always
 ```
 
-### 13. Deploy Applications
+### 14. Deploy Applications
 
 Commit and push your configuration, then deploy:
 
@@ -360,7 +379,7 @@ git add -A && git commit -m "Configure deployment" && git push
 kubectl apply -f argocd/apps/
 ```
 
-### 14. Test CI/CD Pipeline
+### 15. Test CI/CD Pipeline
 
 Make a change to `webapp/main.py` and push:
 
