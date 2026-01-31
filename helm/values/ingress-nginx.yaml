@@ -10,14 +10,14 @@ controller:
       # - Static IP that never changes
       # - If the AZ goes down, app is unreachable
       # =================================================================
-      service.beta.kubernetes.io/aws-load-balancer-eip-allocations: "eipalloc-0ce33851db17dc867"
-      service.beta.kubernetes.io/aws-load-balancer-subnets: "subnet-0e5524aefd89921a9"
+      service.beta.kubernetes.io/aws-load-balancer-eip-allocations: "eipalloc-0194f48d76a0f5f28"
+      service.beta.kubernetes.io/aws-load-balancer-subnets: "subnet-099c7dfaa1934146b"
       
       # =================================================================
       # PRODUCTION CONFIG: Multi-AZ with EIPs per AZ (~$11/month for 3 AZs)
       # Uncomment below and remove single-subnet config above:
       # 
-      # service.beta.kubernetes.io/aws-load-balancer-eip-allocations: "eipalloc-0ce33851db17dc867"
+      # service.beta.kubernetes.io/aws-load-balancer-eip-allocations: "eipalloc-0194f48d76a0f5f28"
       # 
       # Or use Route 53 with dynamic NLB (no EIPs needed):
       # - Remove eip-allocations and subnets annotations
