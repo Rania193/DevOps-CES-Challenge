@@ -305,6 +305,23 @@ kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/st
 kubectl wait --for=condition=Ready pods --all -n argocd --timeout=300s
 ```
 
+### 10.5. Fix Ingress-NGINX Webhook (if needed)
+
+After ingress-nginx is installed via ArgoCD, you may need to fix the admission webhook CA bundle. This is a known issue where the webhook certificate isn't always properly configured.
+
+**Check if fix is needed:**
+```bash
+# Try to create a test ingress - if it fails with TLS certificate error, run the fix
+kubectl get ingress -n webapp 2>&1 | grep -q "certificate" && echo "Fix needed" || echo "OK"
+```
+
+**Apply the fix:**
+```bash
+./scripts/fix-ingress-nginx-webhook.sh
+```
+
+**Note:** This only needs to be done once after ingress-nginx installation. If you destroy and recreate the cluster, you'll need to run this again.
+
 ### 11. Configure ArgoCD for helm-secrets
 
 ```bash
