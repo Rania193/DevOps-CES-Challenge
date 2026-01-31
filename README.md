@@ -137,7 +137,7 @@ Manages application deployments using GitOps principles. When changes are pushed
 
 ![ArgoCD GitHub Login](docs/screenshots/github-login-argocd.png)
 
-**Screenshots:**
+**ArgoCD Dashboard**
 
 ![ArgoCD Dashboard](docs/screenshots/argocd-dashboard.png)
 
