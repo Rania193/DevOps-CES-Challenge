@@ -12,23 +12,17 @@ spec:
       app: {{ .Release.Name }}-webapp
   template:
     metadata:
-      annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum | trunc 8 }}
       labels:
         app: {{ .Release.Name }}-webapp
     spec:
       containers:
         - name: frontend
           image: {{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}
+          imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
           ports:
             - containerPort: 80
+          env:
+            - name: SERVICE_VERSION
+              value: {{ .Values.frontend.image.tag | quote }}
           resources:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
-          volumeMounts:
-            - name: app-code
-              mountPath: /app/main.py
-              subPath: main.py
-      volumes:
-        - name: app-code
-          configMap:
-            name: {{ .Release.Name }}-webapp-code
