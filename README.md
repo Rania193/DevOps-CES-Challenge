@@ -114,6 +114,10 @@ Protects the webapp by requiring GitHub authentication before access is granted.
 - Sets a secure cookie after successful login
 - Only authenticated users can access the webapp
 
+**GitHub OAuth Configuration:**
+
+![GitHub OAuth App for Webapp](docs/screenshots/github-auth-app.png)
+
 ### 3. Ingress Controller (NGINX)
 
 Handles all incoming HTTP/HTTPS traffic and routes requests to the appropriate backend services based on hostname.
@@ -127,9 +131,15 @@ TLS certificates are automatically provisioned by cert-manager.
 
 Manages application deployments using GitOps principles. When changes are pushed to the GitHub repository, ArgoCD detects them and automatically syncs the cluster state.
 
+**GitHub OAuth Configuration:**
+
+![GitHub OAuth App for ArgoCD](docs/screenshots/github-auth-argocd.png)
+
 **Screenshots:**
 
 ![ArgoCD Dashboard](docs/screenshots/argocd-dashboard.png)
+
+![ArgoCD GitHub Login](docs/screenshots/github-login-argocd.png)
 
 
 ### 5. cert-manager
