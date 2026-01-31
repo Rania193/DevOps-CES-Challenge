@@ -78,7 +78,7 @@ variable "cluster_version" {
     Tip: Don't use the absolute latest version in production - let others find bugs first!
   EOT
   type        = string
-  default     = "1.28"
+  default     = "1.32"
   
   validation {
     condition     = can(regex("^1\\.(2[5-9]|3[0-9])$", var.cluster_version))
@@ -133,4 +133,14 @@ variable "additional_tags" {
   description = "Additional tags to apply to all resources"
   type        = map(string)
   default     = {}
+}
+
+# -----------------------------------------------------------------------------
+# CI/CD CONFIGURATION
+# -----------------------------------------------------------------------------
+
+variable "github_repo" {
+  description = "GitHub repository in format owner/repo (e.g., Rania193/DevOps-CES-Challenge). Leave empty to disable GitHub Actions OIDC."
+  type        = string
+  default     = ""
 }
