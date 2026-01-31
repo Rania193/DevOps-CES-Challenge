@@ -10,8 +10,8 @@ controller:
       # - Static IP that never changes
       # - If the AZ goes down, app is unreachable
       # =================================================================
-      service.beta.kubernetes.io/aws-load-balancer-eip-allocations: "eipalloc-07b3b138394de6d6c"
-      service.beta.kubernetes.io/aws-load-balancer-subnets: "subnet-026655445a2b945c2"
+      service.beta.kubernetes.io/aws-load-balancer-eip-allocations: "eipalloc-0c0287b76d750a193"
+      service.beta.kubernetes.io/aws-load-balancer-subnets: "subnet-0105ecaf27d86e754"
       
       # =================================================================
       # PRODUCTION CONFIG: Multi-AZ with EIPs per AZ (~$11/month for 3 AZs)
