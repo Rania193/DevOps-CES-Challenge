@@ -7,7 +7,13 @@ on:
     paths:
       - 'webapp/**'                    # Only trigger on webapp code changes
       - '.github/workflows/deploy.yaml' # Or workflow changes
-    # Note: Commits that only change README, terraform, helm charts, etc. will NOT trigger builds
+    paths-ignore:
+      - '.gitignore'                    # Ignore .gitignore changes
+      - 'README.md'                     # Ignore README changes
+      - '**/*.md'                       # Ignore all markdown files
+      - 'terraform/**'                  # Ignore Terraform changes
+      - 'helm/charts/**/values.yaml'    # Ignore Helm values updates (updated by CI)
+    # Note: Commits with [skip ci] in message will also be ignored
 
 permissions:
   id-token: write   # Required for OIDC
@@ -69,6 +75,6 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add helm/charts/webapp/values.yaml
-          git commit -m "ci: update webapp image to ${{ steps.set-tag.outputs.tag }}" || echo "No changes to commit"
+          git commit -m "ci: update webapp image to ${{ steps.set-tag.outputs.tag }} [skip ci]" || echo "No changes to commit"
           git push origin HEAD:main
 
