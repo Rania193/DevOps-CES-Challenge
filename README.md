@@ -242,7 +242,7 @@ terraform init && terraform apply
 
 This creates the VPC, EKS cluster, IAM roles, Elastic IP, ECR repository, and GitHub Actions OIDC role. Takes approximately 15-20 minutes.
 
-**Note:** Add `github_repo = "Rania193/DevOps-CES-Challenge"` to `terraform.tfvars` to enable GitHub Actions OIDC integration.
+**Note:** Update `github_repo` in `terraform.tfvars` with your own GitHub repository (format: `owner/repo-name`) to enable GitHub Actions OIDC integration. The IAM role will be scoped to this repository for security.
 
 ### 4. Update Ingress-NGINX Configuration
 
