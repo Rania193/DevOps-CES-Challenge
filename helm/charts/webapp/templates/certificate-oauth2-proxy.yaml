@@ -1,0 +1,22 @@
+# Certificate for oauth2-proxy namespace
+# This ensures the TLS secret exists in oauth2-proxy namespace for the oauth2-proxy ingress
+# Both webapp and oauth2-proxy ingresses use the same domain, so they both need the certificate
+{{- if .Values.tls.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ .Values.tls.secretName }}
+  namespace: oauth2-proxy
+  annotations:
+    # Ensure namespace is created if it doesn't exist
+    argocd.argoproj.io/sync-options: CreateNamespace=true
+spec:
+  secretName: {{ .Values.tls.secretName }}
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+    group: cert-manager.io
+  dnsNames:
+    - {{ .Values.ingress.host }}
+{{- end }}
+
