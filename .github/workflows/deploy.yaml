@@ -6,7 +6,6 @@ on:
       - main
     paths:
       - 'webapp/**'                    # Only trigger on webapp code changes
-      - '.github/workflows/deploy.yaml' # Or workflow changes
     # Note: Commits with [skip ci] in message will also be ignored
 
 permissions:
