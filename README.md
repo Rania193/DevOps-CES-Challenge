@@ -163,7 +163,7 @@ This approach allows:
 | Service | URL | Notes |
 |---------|-----|-------|
 | Webapp | https://datavisyn-demo.duckdns.org | Protected by GitHub OAuth |
-| ArgoCD | https://datavisyn-argocd.duckdns.org | GitOps dashboard |
+| ArgoCD | https://datavisyn-argocd.duckdns.org | GitOps dashboard, Protected by GitHub OAuth |
 
 ---
 
