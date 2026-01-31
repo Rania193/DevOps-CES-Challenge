@@ -16,10 +16,8 @@ metadata:
     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
     # Force HTTPS redirect
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    # Rewrite HTTP redirects from ArgoCD backend to HTTPS
-    # ArgoCD runs in insecure mode (HTTP) but we want all redirects to use HTTPS
-    nginx.ingress.kubernetes.io/proxy-redirect-from: "http://$host"
-    nginx.ingress.kubernetes.io/proxy-redirect-to: "https://$host"
+    # Tell ArgoCD it's behind a proxy (prevents redirect loops)
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
 spec:
   ingressClassName: nginx
   tls:
