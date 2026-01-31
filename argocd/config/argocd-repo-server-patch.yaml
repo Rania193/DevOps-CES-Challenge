@@ -1,3 +1,18 @@
+# ArgoCD Repo Server Patch for helm-secrets plugin
+#
+# This file patches the argocd-repo-server deployment to enable helm-secrets
+# plugin support for SOPS-encrypted Helm values files.
+#
+# Apply this patch using:
+#   kubectl patch deployment argocd-repo-server -n argocd \
+#     --patch-file argocd/config/argocd-repo-server-patch.yaml
+#
+# Prerequisites:
+#   1. Create secret with age key:
+#      kubectl -n argocd create secret generic helm-secrets-private-keys \
+#        --from-file=key.txt=$HOME/.config/sops/age/keys.txt
+#   2. Enable helm-secrets schemes in argocd-cm configmap
+#
 spec:
   template:
     spec:

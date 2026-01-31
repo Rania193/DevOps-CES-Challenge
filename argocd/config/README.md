@@ -11,6 +11,23 @@ Configuration files for ArgoCD itself (not the deployed applications).
 | `argocd-ingress.yaml` | Ingress for external access with TLS |
 | `argocd-cmd-params-cm.yaml` | Server config for ingress mode |
 
+## Applying Configuration
+
+Apply all config files (except the patch file):
+```bash
+kubectl apply -f argocd/config/argocd-cmd-params-cm.yaml
+kubectl apply -f argocd/config/argocd-github-oauth.yaml
+kubectl apply -f argocd/config/argocd-ingress.yaml
+```
+
+Apply the repo-server patch separately:
+```bash
+kubectl patch deployment argocd-repo-server -n argocd \
+  --patch-file argocd/config/argocd-repo-server-patch.yaml
+```
+
+**Note:** The `argocd-repo-server-patch.yaml` is a patch fragment and must be applied using `kubectl patch`, not `kubectl apply`.
+
 ## Access Modes
 
 ### Option 1: Port-Forward (Simple)
