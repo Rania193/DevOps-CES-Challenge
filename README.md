@@ -157,6 +157,16 @@ This approach allows:
 
 ---
 
+
+## Access Links & Domains
+
+| Service | URL | Notes |
+|---------|-----|-------|
+| Webapp | https://datavisyn-demo.duckdns.org | Protected by GitHub OAuth |
+| ArgoCD | https://datavisyn-argocd.duckdns.org | GitOps dashboard |
+
+---
+
 ## Authentication Flow
 
 1. **User Access**
@@ -498,15 +508,6 @@ GitHub Actions will:
 4. ArgoCD will automatically detect and deploy the change
 
 **Note:** Only commits that change files in `webapp/` will trigger builds. Changes to README, Terraform, or Helm charts alone will not trigger a build.
-
----
-
-## Access Links & Domains
-
-| Service | URL | Notes |
-|---------|-----|-------|
-| Webapp | https://datavisyn-demo.duckdns.org | Protected by GitHub OAuth |
-| ArgoCD | https://datavisyn-argocd.duckdns.org | GitOps dashboard |
 
 ---
 
