@@ -1,6 +1,6 @@
 # Datavisyn DevOps Challenge
 
-A Kubernetes deployment on AWS EKS with GitHub OAuth authentication, encrypted secrets management, and GitOps continuous deployment.
+A Kubernetes deployment on AWS EKS with GitHub OAuth authentication, encrypted secrets management, GitOps continuous deployment, and automated CI/CD pipeline.
 
 ---
 
@@ -24,8 +24,14 @@ The platform is deployed on AWS using an EKS (Elastic Kubernetes Service) cluste
 - **OAuth2 Proxy**: Secures access to the webapp by authenticating users via GitHub OAuth.  
   [OAuth2 Proxy](https://oauth2-proxy.github.io/oauth2-proxy/)
 
-- **Webapp (FastAPI)**: A Python-based web application demonstrating the deployment.  
+- **Webapp (FastAPI)**: A Python-based web application demonstrating the deployment. Built as a Docker image and stored in AWS ECR.  
   [FastAPI](https://fastapi.tiangolo.com/)
+
+- **GitHub Actions CI/CD**: Automated Docker builds and deployments. On every push to `main` that changes the webapp code, builds a new image, pushes to ECR, and updates Helm values for ArgoCD to deploy.  
+  [GitHub Actions](https://docs.github.com/en/actions)
+
+- **AWS ECR**: Container registry for storing Docker images. Integrated with GitHub Actions via OIDC for secure, credential-free authentication.  
+  [AWS ECR](https://docs.aws.amazon.com/ecr/)
 
 - **ArgoCD**: GitOps tool for continuous deployment. Monitors the GitHub repository and automatically syncs changes to the cluster.  
   [ArgoCD](https://argo-cd.readthedocs.io/)
@@ -44,6 +50,15 @@ The platform is deployed on AWS using an EKS (Elastic Kubernetes Service) cluste
 ## Project Structure
 
 ```
+.github/
+  workflows/
+    deploy.yaml          # GitHub Actions CI/CD pipeline
+
+webapp/                  # FastAPI application source code
+  main.py               # Application code
+  requirements.txt      # Python dependencies
+  Dockerfile            # Docker image build instructions
+
 argocd/
   apps/                  # ArgoCD Application manifests (one per component)
   config/                # ArgoCD server configuration (OAuth, Ingress)
@@ -61,11 +76,13 @@ terraform/
   bootstrap/             # S3 backend for Terraform state
   modules/
     eks/                 # EKS cluster configuration
-    iam/                 # IAM roles and policies
+    iam/                 # IAM roles and policies (includes GitHub Actions OIDC)
     vpc/                 # VPC, subnets, NAT gateway
+    ecr/                 # ECR repository for Docker images
 
 docs/
   screenshots/           # Application screenshots
+  CI_CD_MIGRATION.md    # CI/CD setup and migration guide
 ```
 
 ---
@@ -74,7 +91,16 @@ docs/
 
 ### 1. Webapp (FastAPI)
 
-A simple Python FastAPI application that returns a JSON response. The application code is injected via a Kubernetes ConfigMap, allowing updates without rebuilding the container image.
+A Python FastAPI application that displays a simple web interface. The application is built as a Docker image and stored in AWS ECR. 
+
+**CI/CD Pipeline:**
+- Code changes in `webapp/` trigger GitHub Actions
+- Docker image is built and tagged with commit SHA (e.g., `a3b8c2d`)
+- Image is pushed to ECR
+- Helm values are automatically updated with new tag
+- ArgoCD detects the change and deploys the new image
+
+**Important:** The pipeline only triggers on commits that change files in `webapp/` or `.github/workflows/deploy.yaml`. Commits that only change README, Terraform, or Helm charts will **not** trigger a build, avoiding unnecessary image builds.
 
 **Screenshots:**
 
@@ -141,8 +167,11 @@ This approach allows:
    - OAuth2 Proxy validates the cookie and forwards the request to the webapp
 
 5. **Continuous Deployment**
+   - GitHub Actions builds Docker image on code changes
+   - Image is pushed to ECR with commit SHA as tag
+   - Helm values are updated automatically
    - ArgoCD monitors the GitHub repository for changes
-   - When changes are detected, ArgoCD syncs the cluster state automatically
+   - When Helm values change, ArgoCD syncs the cluster state and deploys the new image
 
 ---
 
@@ -150,8 +179,8 @@ This approach allows:
 
 ### Prerequisites
 
-- AWS account with IAM permissions for EKS, VPC, and IAM
-- GitHub account for OAuth and repository hosting
+- AWS account with IAM permissions for EKS, VPC, IAM, and ECR
+- GitHub account for OAuth, repository hosting, and Actions
 - Command-line tools: `terraform`, `kubectl`, `helm`, `aws`, `sops`, `age`
 
 ### 1. Clone the Repository
@@ -191,7 +220,9 @@ cd ..
 terraform init && terraform apply
 ```
 
-This creates the VPC, EKS cluster, IAM roles, and Elastic IP. Takes approximately 15-20 minutes.
+This creates the VPC, EKS cluster, IAM roles, Elastic IP, ECR repository, and GitHub Actions OIDC role. Takes approximately 15-20 minutes.
+
+**Note:** Add `github_repo = "Rania193/DevOps-CES-Challenge"` to `terraform.tfvars` to enable GitHub Actions OIDC integration.
 
 ### 4. Configure kubectl
 
@@ -233,7 +264,7 @@ Create two OAuth applications at [GitHub Developer Settings](https://github.com/
 
 ### 8. Configure Secrets
 
-Edit the encrypted secrets file with your webapp OAuth credentials:
+Edit the encrypted secrets file in the root directory of the project with your webapp OAuth credentials:
 
 ```bash
 sops secrets/secrets.enc.yaml
@@ -289,7 +320,38 @@ kubectl apply -f argocd/config/
 kubectl -n argocd rollout restart deployment argocd-server argocd-dex-server
 ```
 
-### 12. Deploy Applications
+### 12. Configure GitHub Actions
+
+Get the GitHub Actions IAM role ARN:
+
+```bash
+cd terraform
+terraform output github_actions_role_arn
+```
+
+Add this as a GitHub Secret:
+1. Go to your repository → Settings → Secrets and variables → Actions
+2. Click "New repository secret"
+3. Name: `AWS_ROLE_ARN`
+4. Value: (output from above)
+
+Get the ECR repository URL:
+
+```bash
+terraform output ecr_repository_url
+```
+
+Update `helm/charts/webapp/values.yaml`:
+
+```yaml
+frontend:
+  image:
+    repository: "<account-id>.dkr.ecr.eu-west-1.amazonaws.com/webapp"  # Use output above
+    tag: "latest"
+    pullPolicy: Always
+```
+
+### 13. Deploy Applications
 
 Commit and push your configuration, then deploy:
 
@@ -297,6 +359,25 @@ Commit and push your configuration, then deploy:
 git add -A && git commit -m "Configure deployment" && git push
 kubectl apply -f argocd/apps/
 ```
+
+### 14. Test CI/CD Pipeline
+
+Make a change to `webapp/main.py` and push:
+
+```bash
+# Edit webapp/main.py (change the HTML message, for example)
+git add webapp/main.py
+git commit -m "Update webapp message"
+git push
+```
+
+GitHub Actions will:
+1. Build a new Docker image
+2. Push to ECR with commit SHA tag
+3. Update `helm/charts/webapp/values.yaml` with new tag
+4. ArgoCD will automatically detect and deploy the change
+
+**Note:** Only commits that change files in `webapp/` will trigger builds. Changes to README, Terraform, or Helm charts alone will not trigger a build.
 
 ---
 
@@ -441,12 +522,39 @@ echo "Cleanup complete!"
 
 ---
 
+## CI/CD Pipeline Details
+
+### When Does It Build?
+
+The GitHub Actions workflow **only triggers** when:
+- Files in `webapp/` directory are changed (e.g., `main.py`, `requirements.txt`, `Dockerfile`)
+- The workflow file itself is changed (`.github/workflows/deploy.yaml`)
+
+This prevents unnecessary builds and saves GitHub Actions minutes.
+
+### Image Tagging
+
+- **Tag format**: First 7 characters of commit SHA (e.g., `a3b8c2d`)
+- **Latest tag**: Also pushes as `latest` for convenience
+- **Version tracking**: Each commit = unique image tag = easy rollback
+
+### Authentication
+
+GitHub Actions authenticates to AWS using **OIDC** (OpenID Connect):
+- No AWS access keys stored in GitHub
+- Temporary credentials (expire after 1 hour)
+- Role can only be assumed from your specific repository
+- More secure than long-lived credentials
+
+---
+
 ## Notes
 
 - All secrets are encrypted with SOPS and should never be committed in plaintext
 - TLS certificates are automatically managed by cert-manager and renewed before expiration
 - The Elastic IP ensures the load balancer IP never changes, simplifying DNS management
-- For troubleshooting, check ArgoCD sync status and Kubernetes pod logs
+- Docker images are built automatically on webapp code changes
+- For troubleshooting, check ArgoCD sync status, Kubernetes pod logs, and GitHub Actions workflow runs
 
 ---
 
@@ -474,3 +582,9 @@ echo "Cleanup complete!"
 - [oauth2-proxy](https://artifacthub.io/packages/helm/oauth2-proxy/oauth2-proxy)
 - [cert-manager](https://artifacthub.io/packages/helm/cert-manager/cert-manager)
 - [argo-cd](https://artifacthub.io/packages/helm/argo/argo-cd)
+
+### Additional Resources
+
+- [GitHub Actions Documentation](https://docs.github.com/en/actions)
+- [AWS ECR Documentation](https://docs.aws.amazon.com/ecr/)
+- [GitHub Actions OIDC with AWS](https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services)
