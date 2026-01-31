@@ -234,14 +234,20 @@ SUBNET_ID=$(terraform output -raw nlb_subnet_id)
 EIP_ALLOC_ID=$(terraform output -raw nlb_eip_allocation_id)
 
 # Update the ingress-nginx values file
-sed -i.bak "s|service.beta.kubernetes.io/aws-load-balancer-subnets: \".*\"|service.beta.kubernetes.io/aws-load-balancer-subnets: \"$SUBNET_ID\"|" ../helm/values/ingress-nginx.yaml
-sed -i.bak "s|service.beta.kubernetes.io/aws-load-balancer-eip-allocations: \".*\"|service.beta.kubernetes.io/aws-load-balancer-eip-allocations: \"$EIP_ALLOC_ID\"|" ../helm/values/ingress-nginx.yaml
+sed -i '' "s|\(.*service.beta.kubernetes.io/aws-load-balancer-subnets: \)\".*\"|\1\"$SUBNET_ID\"|" ../helm/values/ingress-nginx.yaml
+sed -i '' "s|\(.*service.beta.kubernetes.io/aws-load-balancer-eip-allocations: \)\".*\"|\1\"$EIP_ALLOC_ID\"|" ../helm/values/ingress-nginx.yaml
 
 # Verify the changes
 grep -E "subnets|eip-allocations" ../helm/values/ingress-nginx.yaml
+
+# IMPORTANT: Commit and push the changes so ArgoCD can sync them
+git add ../helm/values/ingress-nginx.yaml
+git commit -m "Update ingress-nginx with subnet and EIP allocation IDs"
+git push
 ```
 
-**Important:** If you recreate the infrastructure, these IDs will change and you must update them again.
+**Important:** 
+- If you recreate the infrastructure, these IDs will change and you must update them again.
 
 ### 5. Configure kubectl
 
@@ -266,6 +272,7 @@ Go to [DuckDNS](https://www.duckdns.org) and create two domains pointing to your
 |--------|---------|
 | `datavisyn-demo.duckdns.org` | Main webapp |
 | `datavisyn-argocd.duckdns.org` | ArgoCD dashboard |
+
 
 ![DuckDNS Configuration](docs/screenshots/duckdns.png)
 
@@ -352,8 +359,38 @@ kubectl -n argocd patch secret argocd-secret --type='json' -p="[
 Apply ArgoCD configuration:
 
 ```bash
-kubectl apply -f argocd/config/
+# Apply configmaps and ingress (exclude the patch file which is already applied)
+kubectl apply -f argocd/config/argocd-cmd-params-cm.yaml
+kubectl apply -f argocd/config/argocd-github-oauth.yaml
+kubectl apply -f argocd/config/argocd-ingress.yaml
+
+# Restart deployments to pick up ConfigMap changes:
 kubectl -n argocd rollout restart deployment argocd-server argocd-dex-server
+```
+
+**Verify the ingress is created:**
+```bash
+kubectl get ingress -n argocd
+```
+
+You should see `argocd-server-ingress` with an ADDRESS (the NLB hostname). The TLS certificate will be automatically issued by cert-manager, which may take 1-2 minutes. Check certificate status:
+
+```bash
+kubectl get certificate -n argocd
+# Wait until READY shows "True"
+```
+
+**If certificate stays in "False" state:**
+
+This usually means DNS is not correctly configured. Verify:
+1. Both DuckDNS domains point to the same Elastic IP
+2. DNS has propagated (can take a few minutes)
+3. The IP matches your NLB's Elastic IP
+
+If DNS is wrong, update DuckDNS, then delete and recreate the certificate:
+```bash
+kubectl delete certificate argocd-server-tls -n argocd
+# Certificate will be automatically recreated by the ingress
 ```
 
 ### 13. Configure GitHub Actions
@@ -396,7 +433,44 @@ git add -A && git commit -m "Configure deployment" && git push
 kubectl apply -f argocd/apps/
 ```
 
-### 15. Test CI/CD Pipeline
+**Note:** This command applies ArgoCD Application manifests (not the webapp resources directly). ArgoCD will then:
+1. Read the Helm charts from your repository
+2. Deploy the actual Kubernetes resources (Deployments, Services, Ingress, etc.)
+3. Manage them automatically with sync policies
+
+You can verify the deployment in the ArgoCD UI or with:
+```bash
+kubectl get applications -n argocd
+kubectl get pods -n webapp
+```
+
+**Important:** 
+- The webapp pods will initially fail with `ImagePullBackOff` because ECR is empty. This is expected! The image will be created when you trigger the CI/CD pipeline in the next step.
+
+### 15. Trigger Initial Build (Required)
+
+Since ECR is initially empty, you need to trigger GitHub Actions to build and push the first image:
+
+```bash
+# Make a small change to trigger the build (or just touch the file)
+echo "# Initial build" >> webapp/main.py
+git add webapp/main.py
+git commit -m "Trigger initial build"
+git push
+```
+
+GitHub Actions will:
+1. Build the Docker image
+2. Push it to ECR (with both commit SHA tag and `latest` tag)
+3. Update `helm/charts/webapp/values.yaml` with the new tag
+4. ArgoCD will automatically detect and deploy the change
+
+Wait for the workflow to complete, then check:
+```bash
+kubectl get pods -n webapp  # Should show Running status
+```
+
+### 16. Test CI/CD Pipeline
 
 Make a change to `webapp/main.py` and push:
 
@@ -474,134 +548,7 @@ kubectl -n argocd create secret generic helm-secrets-private-keys \
 
 ## Cleanup / Teardown
 
-**Important:** You cannot run `terraform destroy` directly. Two things will cause it to fail:
-
-1. **Network Load Balancer**: Created by Kubernetes (not Terraform), it holds a reference to the Elastic IP. Terraform will fail trying to delete the EIP while it's still in use.
-2. **ECR Repository**: Cannot be deleted if it contains Docker images. You must delete all images first, otherwise you'll get `RepositoryNotEmptyException`.
-
-Follow this order:
-
-### 1. Delete Kubernetes Services (releases the Load Balancer)
-
-```bash
-# Delete the ingress-nginx service that created the NLB
-kubectl delete svc ingress-nginx-controller -n ingress-nginx
-
-# Or delete the entire namespace
-kubectl delete namespace ingress-nginx
-```
-
-### 2. Wait for the NLB to be Deleted
-
-The AWS cloud controller will delete the NLB when the service is removed. This can take 1-2 minutes.
-
-```bash
-# Verify no load balancers remain
-aws elbv2 describe-load-balancers --query 'LoadBalancers[*].[LoadBalancerName,State.Code]' --output table
-```
-
-Wait until your NLB no longer appears in the list, or shows as "deleted".
-
-### 3. Delete Remaining Kubernetes Resources
-
-```bash
-# Delete ArgoCD applications
-kubectl delete -f argocd/apps/
-
-# Delete namespaces
-kubectl delete namespace argocd cert-manager oauth2-proxy webapp
-```
-
-### 4. Delete ECR Images (Required Before Destroy)
-
-**Important:** ECR repositories cannot be deleted if they contain images. You must delete all images first.
-
-```bash
-# Get the ECR repository name
-ECR_REPO=$(cd terraform && terraform output -raw ecr_repository_name)
-AWS_REGION=$(cd terraform && terraform output -raw aws_region || echo "eu-west-1")
-AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-
-# List all images in the repository
-aws ecr list-images --repository-name "$ECR_REPO" --region "$AWS_REGION"
-
-# Delete all images (this deletes all tags)
-aws ecr batch-delete-image \
-  --repository-name "$ECR_REPO" \
-  --region "$AWS_REGION" \
-  --image-ids imageTag=latest \
-  $(aws ecr list-images --repository-name "$ECR_REPO" --region "$AWS_REGION" --query 'imageIds[*]' --output json | jq -r '.[] | "--image-ids imageDigest=\(.imageDigest)"' | tr '\n' ' ')
-
-# Alternative: Delete all images by digest (more thorough)
-aws ecr list-images --repository-name "$ECR_REPO" --region "$AWS_REGION" --query 'imageIds[*]' --output json > /tmp/image-ids.json
-aws ecr batch-delete-image \
-  --repository-name "$ECR_REPO" \
-  --region "$AWS_REGION" \
-  --image-ids file:///tmp/image-ids.json
-
-# Verify repository is empty
-aws ecr describe-images --repository-name "$ECR_REPO" --region "$AWS_REGION"
-```
-
-**Note:** If you get `RepositoryNotEmptyException`, the repository still contains images. Make sure all images are deleted before proceeding.
-
-### 5. Destroy Terraform Infrastructure
-
-```bash
-cd terraform
-terraform destroy
-```
-
-### 6. Clean Up Terraform State Backend (Optional)
-
-If you also want to remove the S3 bucket used for Terraform state:
-
-```bash
-cd terraform/bootstrap
-
-# Empty the bucket first (required before deletion)
-aws s3 rm s3://datavisyn-terraform-state-$(aws sts get-caller-identity --query Account --output text) --recursive
-
-terraform destroy
-```
-
-### Quick Cleanup Script
-
-For convenience, here's the full cleanup in one go:
-
-```bash
-#!/bin/bash
-set -e
-
-echo "Deleting ingress-nginx service..."
-kubectl delete svc ingress-nginx-controller -n ingress-nginx --ignore-not-found
-
-echo "Waiting for NLB to be released (60 seconds)..."
-sleep 60
-
-echo "Deleting namespaces..."
-kubectl delete namespace ingress-nginx argocd cert-manager oauth2-proxy webapp --ignore-not-found
-
-echo "Waiting for namespace cleanup (30 seconds)..."
-sleep 30
-
-echo "Deleting ECR images..."
-ECR_REPO=$(cd terraform && terraform output -raw ecr_repository_name 2>/dev/null || echo "webapp")
-AWS_REGION=$(cd terraform && terraform output -raw aws_region 2>/dev/null || echo "eu-west-1")
-if aws ecr describe-images --repository-name "$ECR_REPO" --region "$AWS_REGION" --query 'imageDetails[*]' --output json 2>/dev/null | grep -q '\['; then
-  echo "Found images in ECR, deleting..."
-  aws ecr list-images --repository-name "$ECR_REPO" --region "$AWS_REGION" --query 'imageIds[*]' --output json > /tmp/image-ids.json
-  aws ecr batch-delete-image --repository-name "$ECR_REPO" --region "$AWS_REGION" --image-ids file:///tmp/image-ids.json 2>/dev/null || echo "No images to delete"
-else
-  echo "ECR repository is already empty"
-fi
-
-echo "Running terraform destroy..."
-cd terraform
-terraform destroy -auto-approve
-
-echo "Cleanup complete!"
-```
+See [docs/CLEANUP.md](docs/CLEANUP.md) for detailed instructions on tearing down the infrastructure.
 
 ---
 
