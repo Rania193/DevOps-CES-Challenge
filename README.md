@@ -100,7 +100,7 @@ A Python FastAPI application that displays a simple web interface. The applicati
 - Helm values are automatically updated with new tag
 - ArgoCD detects the change and deploys the new image
 
-**Important:** The pipeline only triggers on commits that change files in `webapp/` or `.github/workflows/deploy.yaml`. Commits that only change README, Terraform, or Helm charts will **not** trigger a build, avoiding unnecessary image builds.
+**Important:** The pipeline only triggers on commits that change files in `webapp/`. Commits that only change README, Terraform, or Helm charts will **not** trigger a build, avoiding unnecessary image builds.
 
 **Screenshots:**
 
