@@ -7,12 +7,6 @@ on:
     paths:
       - 'webapp/**'                    # Only trigger on webapp code changes
       - '.github/workflows/deploy.yaml' # Or workflow changes
-    paths-ignore:
-      - '.gitignore'                    # Ignore .gitignore changes
-      - 'README.md'                     # Ignore README changes
-      - '**/*.md'                       # Ignore all markdown files
-      - 'terraform/**'                  # Ignore Terraform changes
-      - 'helm/charts/**/values.yaml'    # Ignore Helm values updates (updated by CI)
     # Note: Commits with [skip ci] in message will also be ignored
 
 permissions:
