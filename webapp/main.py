@@ -80,6 +80,7 @@ def read_root():
           <span class="tag">Terraform</span>
           <span class="tag">ArgoCD</span>
           <span class="tag">Helm</span>
+          <span class="tag">GitHub Actions</span>
           <span class="tag">OAuth2</span>
           <span class="tag">Let's Encrypt</span>
         </div>
