@@ -135,11 +135,11 @@ Manages application deployments using GitOps principles. When changes are pushed
 
 ![GitHub OAuth App for ArgoCD](docs/screenshots/github-auth-argocd.png)
 
+![ArgoCD GitHub Login](docs/screenshots/github-login-argocd.png)
+
 **Screenshots:**
 
 ![ArgoCD Dashboard](docs/screenshots/argocd-dashboard.png)
-
-![ArgoCD GitHub Login](docs/screenshots/github-login-argocd.png)
 
 
 ### 5. cert-manager
