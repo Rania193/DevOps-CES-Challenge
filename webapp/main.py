@@ -73,7 +73,7 @@ def read_root():
     </head>
     <body>
       <div class="card">
-        <h1>Datavisyn DevOps Challenge</h1>
+        <h1>Datavisyn DevOps Challenge.</h1>
         <p class="subtitle">Kubernetes + GitOps Infrastructure Demo</p>
         <div class="stack">
           <span class="tag">EKS</span>
