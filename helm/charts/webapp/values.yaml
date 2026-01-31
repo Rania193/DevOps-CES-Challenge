@@ -1,16 +1,13 @@
 frontend:
   enabled: true
-  
   image:
     # ECR repository URL (update after terraform apply)
     # Format: <account-id>.dkr.ecr.<region>.amazonaws.com/webapp
-    repository: "512537174734.dkr.ecr.eu-west-1.amazonaws.com/webapp"  # Will be set by GitHub Actions or manually
-    tag: "latest"   # Will be updated by GitHub Actions
-    pullPolicy: Always  # Always pull latest for ECR images
-  
+    repository: "512537174734.dkr.ecr.eu-west-1.amazonaws.com/webapp" # Will be set by GitHub Actions or manually
+    tag: "2d65520" # Will be updated by GitHub Actions
+    pullPolicy: Always # Always pull latest for ECR images
   replicas: 2
   containerPort: 80
-  
   resources:
     requests:
       memory: "128Mi"
@@ -18,25 +15,20 @@ frontend:
     limits:
       memory: "256Mi"
       cpu: "500m"
-  
   service:
     type: ClusterIP
     port: 80
-
 ingress:
   enabled: true
   className: nginx
-  
   # Your domain (leave empty to accept all hosts)
   # Examples: "myapp.duckdns.org" or "myapp.xyz"
   host: "datavisyn-demo.duckdns.org"
-  
   annotations:
     # OAuth2 authentication
     nginx.ingress.kubernetes.io/auth-url: "http://oauth2-proxy.oauth2-proxy.svc.cluster.local:80/oauth2/auth"
     nginx.ingress.kubernetes.io/auth-signin: "https://$host/oauth2/start?rd=$escaped_request_uri"
     nginx.ingress.kubernetes.io/auth-response-headers: "X-Auth-Request-User,X-Auth-Request-Email"
-
 # TLS/HTTPS configuration
 tls:
   enabled: true
