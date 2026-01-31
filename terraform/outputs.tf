@@ -65,3 +65,14 @@ output "nlb_subnet_id" {
   description = "Public subnet ID for single-AZ NLB - add to ingress-nginx.yaml"
   value       = module.vpc.public_subnet_ids[0]
 }
+
+# ECR outputs
+output "ecr_repository_url" {
+  description = "URL of the ECR repository for webapp images"
+  value       = module.ecr.webapp_repository_url
+}
+
+output "github_actions_role_arn" {
+  description = "ARN of the IAM role for GitHub Actions (add to GitHub Secrets as AWS_ROLE_ARN)"
+  value       = var.github_repo != "" ? module.iam.github_actions_role_arn : ""
+}

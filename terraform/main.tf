@@ -72,11 +72,20 @@ module "eks" {
   depends_on = [module.vpc]
 }
 
+module "ecr" {
+  source = "./modules/ecr"
+  environment = var.environment
+  
+  depends_on = []
+}
+
 module "iam" {
   source = "./modules/iam"
   name_prefix = local.name_prefix
   eks_oidc_provider_url = module.eks.oidc_provider_url
   eks_oidc_provider_arn = module.eks.oidc_provider_arn
+  github_repo = var.github_repo
+  ecr_repository_arn = module.ecr.webapp_repository_arn
   
-  depends_on = [module.eks]
+  depends_on = [module.eks, module.ecr]
 }
