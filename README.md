@@ -332,8 +332,6 @@ kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/st
 kubectl wait --for=condition=Ready pods --all -n argocd --timeout=300s
 ```
 
-**Note:** This only needs to be done once after ingress-nginx installation. If you destroy and recreate the cluster, you'll need to run this again.
-
 ### 11. Configure ArgoCD for helm-secrets
 
 ```bash
