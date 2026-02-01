@@ -61,10 +61,9 @@ variable "cluster_version" {
   description = <<-EOT
     Kubernetes version for the EKS cluster.
     
-    AWS supports the last 3-4 versions. Check AWS docs for current supported versions.
+    Check AWS docs for current supported versions.
     Each version has a ~14 month support window.
-    
-    Tip: Don't use the absolute latest version in production - let others find bugs first!
+
   EOT
   type        = string
   default     = "1.32"
@@ -78,14 +77,7 @@ variable "cluster_version" {
 variable "node_instance_types" {
   description = <<-EOT
     EC2 instance types for the EKS worker nodes.
-    
-    Considerations:
-    - t3.medium: Good for dev/testing (2 vCPU, 4GB RAM) ~$30/month
-    - t3.large: Good balance (2 vCPU, 8GB RAM) ~$60/month
-    - m5.large: Production workloads (2 vCPU, 8GB RAM) ~$70/month
-    - m5.xlarge: Heavier workloads (4 vCPU, 16GB RAM) ~$140/month
-    
-    Multiple types allow the autoscaler to find available capacity.
+
   EOT
   type        = list(string)
   default     = ["t3.medium"]
