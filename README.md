@@ -175,7 +175,7 @@ Manages application deployments using GitOps principles. When changes are pushed
 
 **ArgoCD Dashboard**
 
-![ArgoCD Dashboard](docs/screenshots/argocd-dashboard.png)
+![ArgoCD Dashboard](docs/screenshots/argo-dashboard.png)
 
 
 ### 5. cert-manager
