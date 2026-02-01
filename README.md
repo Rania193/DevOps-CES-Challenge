@@ -8,7 +8,7 @@ A Kubernetes deployment on AWS EKS with GitHub OAuth authentication, encrypted s
 
 The platform is deployed on AWS using an EKS (Elastic Kubernetes Service) cluster. The architecture leverages several key components for security, automation, and scalability. Below is a high-level overview:
 
-![Architecture Diagram](docs/architecture-diagram.png)
+![Architecture Diagram](docs/architecture.png)
 
 ### Key Components
 
@@ -44,6 +44,40 @@ The platform is deployed on AWS using an EKS (Elastic Kubernetes Service) cluste
 
 - **DuckDNS**: Free dynamic DNS service for custom domain names.  
   [DuckDNS](https://www.duckdns.org/)
+
+---
+
+## Design Choices
+
+This section explains the reasoning behind key architectural decisions.
+
+**GitOps with ArgoCD**
+
+ArgoCD was chosen over manual `kubectl apply` or CI/CD-only deployments because it provides a single source of truth (Git) and automatic reconciliation. If someone manually changes resources in the cluster, ArgoCD detects drift and reverts to the desired state. This prevents configuration drift and makes deployments auditable through Git history. The separation of CI (GitHub Actions) and CD (ArgoCD) also means you can deploy the same image to multiple environments by pointing ArgoCD at different branches or paths.
+
+**OAuth2 Proxy for Authentication**
+
+Instead of building authentication into the webapp, OAuth2 Proxy acts as a sidecar that handles all auth concerns. This keeps the application stateless and allows you to swap authentication providers (GitHub, Google, Okta) without touching application code. The proxy validates sessions via cookies, so the webapp only receives authenticated requests.
+
+**SOPS + age for Secrets**
+
+Secrets are encrypted with SOPS using age. The age key is stored in ArgoCD as a Kubernetes secret, so decryption happens at deploy time. This approach lets you version-control encrypted secrets in Git while maintaining security. Helm-secrets integrates with ArgoCD to decrypt values during the Helm rendering phase.
+
+**GitHub Actions OIDC Integration**
+
+GitHub Actions uses OIDC to assume an AWS IAM role instead of storing long-lived access keys. The IAM role is scoped to the specific repository, so even if someone compromises the GitHub token, they can only access resources for that repo. This follows AWS security best practices and eliminates the need to rotate static credentials.
+
+**Network Load Balancer with Elastic IP**
+
+A Network Load Balancer with a static Elastic IP provides a predictable IP address for DNS configuration. While Application Load Balancers are more feature-rich, NLB is sufficient for forwarding traffic to the Ingress Controller and costs less. The Elastic IP ensures DNS doesn't break if the NLB is recreated.
+
+**cert-manager for TLS**
+
+cert-manager automates Let's Encrypt certificate provisioning and renewal. Certificates are automatically renewed before expiry, eliminating manual certificate management.
+
+**Helm for Application Packaging**
+
+Helm charts provide templating and value overrides, making it easy to deploy the same application with different configurations. The webapp chart is custom-built to keep dependencies minimal, while external charts (ingress-nginx, oauth2-proxy, cert-manager) are sourced from their official repositories.
 
 ---
 
@@ -376,25 +410,8 @@ kubectl -n argocd rollout restart deployment argocd-server argocd-dex-server
 kubectl get ingress -n argocd
 ```
 
-You should see `argocd-server-ingress` with an ADDRESS (the NLB hostname). The TLS certificate will be automatically issued by cert-manager, which may take 1-2 minutes. Check certificate status:
+You should see `argocd-server-ingress` with an ADDRESS (the NLB hostname).
 
-```bash
-kubectl get certificate -n argocd
-# Wait until READY shows "True"
-```
-
-**If certificate stays in "False" state:**
-
-This usually means DNS is not correctly configured. Verify:
-1. Both DuckDNS domains point to the same Elastic IP
-2. DNS has propagated (can take a few minutes)
-3. The IP matches your NLB's Elastic IP
-
-If DNS is wrong, update DuckDNS, then delete and recreate the certificate:
-```bash
-kubectl delete certificate argocd-server-tls -n argocd
-# Certificate will be automatically recreated by the ingress
-```
 
 ### 13. Configure GitHub Actions
 
@@ -427,30 +444,7 @@ frontend:
     pullPolicy: Always
 ```
 
-### 14. Deploy Applications
-
-Commit and push your configuration, then deploy:
-
-```bash
-git add -A && git commit -m "Configure deployment" && git push
-kubectl apply -f argocd/apps/
-```
-
-**Note:** This command applies ArgoCD Application manifests (not the webapp resources directly). ArgoCD will then:
-1. Read the Helm charts from your repository
-2. Deploy the actual Kubernetes resources (Deployments, Services, Ingress, etc.)
-3. Manage them automatically with sync policies
-
-You can verify the deployment in the ArgoCD UI or with:
-```bash
-kubectl get applications -n argocd
-kubectl get pods -n webapp
-```
-
-**Important:** 
-- The webapp pods will initially fail with `ImagePullBackOff` because ECR is empty. This is expected! The image will be created when you trigger the CI/CD pipeline in the next step.
-
-### 15. Trigger Initial Build (Required)
+### 14. Trigger Initial Build (Required)
 
 Since ECR is initially empty, you need to trigger GitHub Actions to build and push the first image:
 
@@ -462,15 +456,42 @@ git commit -m "Trigger initial build"
 git push
 ```
 
-GitHub Actions will:
-1. Build the Docker image
-2. Push it to ECR (with both commit SHA tag and `latest` tag)
-3. Update `helm/charts/webapp/values.yaml` with the new tag
-4. ArgoCD will automatically detect and deploy the change
+### 15. Deploy Applications
 
-Wait for the workflow to complete, then check:
+Commit and push your configuration, then deploy:
+
 ```bash
-kubectl get pods -n webapp  # Should show Running status
+git add -A && git commit -m "Configure deployment" && git push
+kubectl apply -f argocd/apps/
+```
+
+The applications deployed include:
+- **cert-manager** (sync-wave 0): Installs cert-manager for automatic TLS certificate provisioning
+- **ingress-nginx** (sync-wave 1): Installs the NGINX Ingress Controller
+- **oauth2-proxy** (sync-wave 2): Installs OAuth2 Proxy for authentication
+- **webapp** (sync-wave 3): Deploys the main web application
+
+**Wait for cert-manager to be ready:**
+```bash
+# Check that cert-manager is installed and running
+kubectl get pods -n cert-manager
+kubectl get applications -n argocd cert-manager
+
+# Wait for cert-manager pods to be Running (may take 1-2 minutes)
+kubectl wait --for=condition=Ready pods --all -n cert-manager --timeout=300s
+```
+
+**Verify TLS certificates are being issued:**
+```bash
+# Check certificate status for ArgoCD
+kubectl get certificate -n argocd
+# Wait until READY shows "True" (may take 1-3 minutes after cert-manager is ready)
+```
+
+You can verify all deployments in the ArgoCD UI or with:
+```bash
+kubectl get applications -n argocd
+kubectl get pods -n webapp
 ```
 
 ### 16. Test CI/CD Pipeline
@@ -543,42 +564,6 @@ kubectl -n argocd create secret generic helm-secrets-private-keys \
 ## Cleanup / Teardown
 
 See [docs/CLEANUP.md](docs/CLEANUP.md) for detailed instructions on tearing down the infrastructure.
-
----
-
-## CI/CD Pipeline Details
-
-### When Does It Build?
-
-The GitHub Actions workflow **only triggers** when:
-- Files in `webapp/` directory are changed (e.g., `main.py`, `requirements.txt`, `Dockerfile`)
-- The workflow file itself is changed (`.github/workflows/deploy.yaml`)
-
-This prevents unnecessary builds and saves GitHub Actions minutes.
-
-### Image Tagging
-
-- **Tag format**: First 7 characters of commit SHA (e.g., `a3b8c2d`)
-- **Latest tag**: Also pushes as `latest` for convenience
-- **Version tracking**: Each commit = unique image tag = easy rollback
-
-### Authentication
-
-GitHub Actions authenticates to AWS using **OIDC** (OpenID Connect):
-- No AWS access keys stored in GitHub
-- Temporary credentials (expire after 1 hour)
-- Role can only be assumed from your specific repository
-- More secure than long-lived credentials
-
----
-
-## Notes
-
-- All secrets are encrypted with SOPS and should never be committed in plaintext
-- TLS certificates are automatically managed by cert-manager and renewed before expiration
-- The Elastic IP ensures the load balancer IP never changes, simplifying DNS management
-- Docker images are built automatically on webapp code changes
-- For troubleshooting, check ArgoCD sync status, Kubernetes pod logs, and GitHub Actions workflow runs
 
 ---
 
