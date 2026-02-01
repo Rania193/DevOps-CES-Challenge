@@ -41,18 +41,7 @@ variable "aws_region" {
 
 variable "vpc_cidr" {
   description = <<-EOT
-    CIDR block for the VPC. This defines the IP address range for your network.
-    
-    CIDR notation: X.X.X.X/Y where Y is the subnet mask
-    /16 = 65,536 IP addresses (10.0.0.0 - 10.0.255.255)
-    /20 = 4,096 IP addresses
-    /24 = 256 IP addresses
-    
-    For EKS, you need enough IPs for:
-    - Worker nodes
-    - Pods (EKS uses VPC CNI, so each pod gets a VPC IP)
-    - Load balancers
-    
+    CIDR block for the VPC. This defines the IP address range for the network.
     10.0.0.0/16 is a safe default that gives you plenty of room.
   EOT
   type        = string
@@ -134,10 +123,6 @@ variable "additional_tags" {
   type        = map(string)
   default     = {}
 }
-
-# -----------------------------------------------------------------------------
-# CI/CD CONFIGURATION
-# -----------------------------------------------------------------------------
 
 variable "github_repo" {
   description = "GitHub repository in format owner/repo (e.g., Rania193/DevOps-CES-Challenge). Leave empty to disable GitHub Actions OIDC."
