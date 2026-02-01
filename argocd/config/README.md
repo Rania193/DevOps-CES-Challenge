@@ -26,8 +26,6 @@ kubectl patch deployment argocd-repo-server -n argocd \
   --patch-file argocd/config/argocd-repo-server-patch.yaml
 ```
 
-**Note:** The `argocd-repo-server-patch.yaml` is a patch fragment and must be applied using `kubectl patch`, not `kubectl apply`.
-
 ## Access Modes
 
 ### Option 1: Port-Forward (Simple)
@@ -46,5 +44,5 @@ kubectl -n argocd rollout restart deployment argocd-server
 
 ## Setup
 
-See [DEPLOYMENT.md](../../DEPLOYMENT.md) for detailed setup instructions.
+See [README.md](../../README.md) for detailed setup instructions.
 
