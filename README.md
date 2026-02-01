@@ -6,7 +6,7 @@ A Kubernetes deployment on AWS EKS with GitHub OAuth authentication, encrypted s
 
 ## Architecture Overview
 
-The platform is deployed on AWS using an EKS (Elastic Kubernetes Service) cluster. The architecture leverages several key components for security, automation, and scalability. Below is a high-level overview:
+The platform is deployed on AWS using an EKS (Elastic Kubernetes Service) cluster. Below is a high-level overview:
 
 ![Architecture Diagram](docs/architecture.png)
 
@@ -16,7 +16,7 @@ The platform is deployed on AWS using an EKS (Elastic Kubernetes Service) cluste
   [AWS EKS Documentation](https://docs.aws.amazon.com/eks/)
 
 - **Elastic IP + Network Load Balancer**: Provides a static IP address for consistent DNS configuration. Traffic is forwarded to the Ingress Controller.  
-  [AWS Elastic IP](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/elastic-ip-addresses-eip.html)
+  [AWS Elastic IP](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/elastic-ip-addresses-eip.html) - [Network Load Balancer](https://aws.amazon.com/elasticloadbalancing/network-load-balancer/)
 
 - **Ingress Controller (NGINX)**: Handles routing, TLS termination, and forwards requests to internal services.  
   [NGINX Ingress Controller](https://kubernetes.github.io/ingress-nginx/)
@@ -86,7 +86,7 @@ Helm charts provide templating and value overrides, making it easy to deploy the
 ```
 .github/
   workflows/
-    deploy.yaml          # GitHub Actions CI/CD pipeline
+    deploy.yaml          # GitHub Actions pipeline
 
 webapp/                  # FastAPI application source code
   main.py               # Application code
@@ -115,8 +115,10 @@ terraform/
     ecr/                 # ECR repository for Docker images
 
 docs/
+  architecture.png       # Architecture diagram
   screenshots/           # Application screenshots
-  CI_CD_MIGRATION.md    # CI/CD setup and migration guide
+  CI_CD_MIGRATION.md     # CI/CD setup and migration guide
+  CLEANUP.md             # Teardown and cleanup instructions
 ```
 
 ---
@@ -134,7 +136,7 @@ A Python FastAPI application that displays a simple web interface. The applicati
 - Helm values are automatically updated with new tag
 - ArgoCD detects the change and deploys the new image
 
-**Important:** The pipeline only triggers on commits that change files in `webapp/`. Commits that only change README, Terraform, or Helm charts will **not** trigger a build, avoiding unnecessary image builds.
+The pipeline only triggers on commits that change files in `webapp/`. Commits that only change README, Terraform, or Helm charts will **not** trigger a build, avoiding unnecessary image builds.
 
 **Screenshots:**
 
@@ -511,11 +513,9 @@ GitHub Actions will:
 3. Update `helm/charts/webapp/values.yaml` with new tag
 4. ArgoCD will automatically detect and deploy the change
 
-**Note:** Only commits that change files in `webapp/` will trigger builds. Changes to README, Terraform, or Helm charts alone will not trigger a build.
-
 ---
 
-## Secrets Rotation
+## Maintenance - Secrets Rotation
 
 ### Rotating Webapp OAuth Credentials
 
