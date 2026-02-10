@@ -4,7 +4,7 @@ frontend:
     # ECR repository URL (update after terraform apply)
     # Format: <account-id>.dkr.ecr.<region>.amazonaws.com/webapp
     repository: "512537174734.dkr.ecr.eu-west-1.amazonaws.com/webapp"
-    tag: "abda996" # Will be updated by GitHub Actions
+    tag: "f724441" # Will be updated by GitHub Actions
     pullPolicy: Always # Always pull latest for ECR images
   replicas: 2
   containerPort: 80
